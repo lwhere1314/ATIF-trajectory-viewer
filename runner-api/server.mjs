@@ -345,6 +345,77 @@ function evidenceLines(log, patterns, limit = 4) {
   return matches
 }
 
+function pytestSummary(log) {
+  const text = String(log || '')
+  const lines = text.split(/\r?\n/)
+  const resultLine = [...lines].reverse().find((line) => /\d+\s+(?:failed|passed|error|skipped|warning)/i.test(line) && /\bin\s+[\d.]+s\b/i.test(line))
+  const failedTests = []
+  for (const line of lines) {
+    const match = line.match(/^FAILED\s+.*?::([A-Za-z0-9_]+)/)
+    if (match) failedTests.push(match[1])
+  }
+  return {
+    resultLine: resultLine?.replace(/^=+|=+$/g, '').trim() || null,
+    failedTests: [...new Set(failedTests)],
+  }
+}
+
+function decorateRerunDiagnosis(diagnosis, verifierRerun, verifierLog, reward) {
+  if (!diagnosis && reward !== 0 && reward !== 0.0) return null
+  const summary = pytestSummary(verifierLog)
+  const result = summary.resultLine || `reward ${reward ?? 'unknown'}`
+  const failed = summary.failedTests.length ? ` Failed test: ${summary.failedTests.join(', ')}.` : ''
+  const base = diagnosis || {
+    kind: 'verifier_rerun_failure',
+    severity: 'agent',
+    label: 'Verifier rerun failure',
+    evidence: [],
+  }
+  return {
+    ...base,
+    kind: base.kind === 'semantic_failure' ? 'semantic_failure' : base.kind,
+    label: base.severity === 'infra' ? base.label : 'Verifier rerun semantic failure',
+    summary: `Verifier rerun completed cleanly: ${result}.${failed}`.replace('..', '.'),
+    evidence: [
+      ...summary.failedTests.map((name) => `FAILED ${name}`),
+      ...(base.evidence || []),
+    ].slice(0, 6),
+    recommendation: reward === 0 || reward === 0.0
+      ? 'Use this as a clean negative/repair sample; the verifier infrastructure issue has been resolved by the rerun.'
+      : 'Use the rerun reward as the corrected label; keep the original verifier log as raw infrastructure context.',
+    rerunPath: verifierRerun?.dir,
+  }
+}
+
+async function findVerifierRerun(runRoot) {
+  if (!runRoot) return null
+  const root = join(runRoot, 'verifier-reruns')
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
+  const candidates = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const dir = join(root, entry.name)
+    const stdoutPath = join(dir, 'test-stdout.txt')
+    const rewardPath = join(dir, 'reward.txt')
+    const verifierLog = await readFile(stdoutPath, 'utf8').catch(() => '')
+    const rewardText = await readFile(rewardPath, 'utf8').catch(() => '')
+    if (!verifierLog && !rewardText) continue
+    const info = await stat(dir).catch(() => null)
+    const rewardNumber = Number(rewardText.trim())
+    candidates.push({
+      id: entry.name,
+      dir,
+      stdoutPath,
+      rewardPath,
+      reward: Number.isFinite(rewardNumber) ? rewardNumber : null,
+      verifierLog: scrubText(verifierLog),
+      summary: pytestSummary(verifierLog),
+      mtimeMs: info?.mtimeMs || 0,
+    })
+  }
+  return candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)[0] || null
+}
+
 function diagnoseVerifierLog(verifierLog, reward, row = {}) {
   const log = verifierLog || ''
   const lowered = log.toLowerCase()
@@ -434,9 +505,20 @@ async function materializeViewerRun(run) {
     || traceArtifacts.find((path) => /\.jsonl$/.test(path))
     || traceArtifacts[0]
   const steps = tracePath ? await stepsFromTraceArtifact(tracePath) : []
-  const verifierLog = row.job_dir ? await findVerifierLog(row.job_dir) : null
-  const reward = row.result_summary?.reward ?? row.result_summary?.trial_results?.find((item) => item.reward != null)?.reward ?? null
-  const verifierDiagnosis = row.verifier_diagnosis || diagnoseVerifierLog(verifierLog, reward, row)
+  const originalVerifierLog = row.job_dir ? await findVerifierLog(row.job_dir) : null
+  const originalReward = row.result_summary?.reward ?? row.result_summary?.trial_results?.find((item) => item.reward != null)?.reward ?? null
+  const verifierRerun = await findVerifierRerun(run.runRoot)
+  const verifierLog = verifierRerun?.verifierLog || originalVerifierLog
+  const reward = verifierRerun?.reward ?? originalReward
+  const diagnosisRow = verifierRerun
+    ? { ...row, result_summary: { ...(row.result_summary || {}), reward } }
+    : row
+  let verifierDiagnosis = verifierRerun
+    ? diagnoseVerifierLog(verifierLog, reward, diagnosisRow)
+    : row.verifier_diagnosis || diagnoseVerifierLog(verifierLog, reward, row)
+  if (verifierRerun) {
+    verifierDiagnosis = decorateRerunDiagnosis(verifierDiagnosis, verifierRerun, verifierLog, reward)
+  }
   const status = row.status === 'finished' ? 'completed' : row.status === 'process_error' ? 'error' : 'failed'
   const failureReason = verifierDiagnosis
     ? `${verifierDiagnosis.label}: ${verifierDiagnosis.summary}`
@@ -483,6 +565,9 @@ async function materializeViewerRun(run) {
         jobDir: row.job_dir,
         traceExports: row.trace_exports || [],
         containerArtifacts: row.container_artifacts || null,
+        originalReward,
+        originalVerifierDiagnosis: row.verifier_diagnosis || diagnoseVerifierLog(originalVerifierLog, originalReward, row),
+        verifierRerun,
         verifierDiagnosis,
       },
     }],
@@ -571,13 +656,19 @@ async function readState(run) {
   const state = await readJson(run.statePath, null)
   if (!state) return null
   const taskRows = state.tasks && typeof state.tasks === 'object' ? Object.values(state.tasks) : []
+  const verifierRerun = await findVerifierRerun(run.runRoot)
   const counts = {}
   for (const row of taskRows) {
     const status = row?.status || 'unknown'
     counts[status] = (counts[status] || 0) + 1
     const reward = row?.result_summary?.reward ?? row?.result_summary?.trial_results?.find((item) => item.reward != null)?.reward ?? null
-    const verifierLog = row?.job_dir ? await findVerifierLog(row.job_dir) : null
-    const diagnosis = diagnoseVerifierLog(verifierLog, reward, row)
+    const originalVerifierLog = row?.job_dir ? await findVerifierLog(row.job_dir) : null
+    const verifierLog = verifierRerun?.verifierLog || originalVerifierLog
+    const effectiveReward = verifierRerun?.reward ?? reward
+    const diagnosis = verifierRerun
+      ? decorateRerunDiagnosis(diagnoseVerifierLog(verifierLog, effectiveReward, row), verifierRerun, verifierLog, effectiveReward)
+      : diagnoseVerifierLog(verifierLog, reward, row)
+    if (verifierRerun) row.verifier_rerun = verifierRerun
     if (diagnosis) row.verifier_diagnosis = diagnosis
   }
   return { ...state, counts }
