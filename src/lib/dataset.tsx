@@ -20,6 +20,38 @@ interface Store {
 const UP_KEY = 'tv-uploads'
 const DatasetContext = createContext<Store>({ data: null, error: null, addUpload: () => {}, clearUploads: () => {}, uploadedCount: 0 })
 
+function runnerRunIds(bundle: UploadBundle): string[] {
+  const ids = new Set<string>()
+  for (const task of bundle.tasks) {
+    const value = task.metadata?.runnerRunId
+    if (typeof value === 'string' && value.length > 0) ids.add(value)
+  }
+  for (const run of bundle.runs) {
+    if ((run.vendorId === 'runner-api' && run.id.startsWith('runner-')) || run.id.startsWith('runner-tb21-')) {
+      ids.add(run.id.slice('runner-'.length))
+    }
+  }
+  return [...ids]
+}
+
+async function fetchRunnerBundle(runId: string): Promise<UploadBundle | null> {
+  const encoded = encodeURIComponent(runId)
+  const candidates = [
+    `/api/runner/runs/${encoded}/viewer-bundle.json`,
+    `${import.meta.env.BASE_URL}runner/runs/${encoded}/viewer-bundle.json`,
+  ]
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) continue
+      return await res.json() as UploadBundle
+    } catch {
+      // Static deployments may not have the local runner API. Try the next URL.
+    }
+  }
+  return null
+}
+
 function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
   const map = new Map(base.map((x) => [x.id, x]))
   for (const x of extra) map.set(x.id, x)
@@ -39,6 +71,33 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
       .then((d: Dataset) => setBase(d))
       .catch((e) => setError(String(e)))
   }, [])
+
+  useEffect(() => {
+    const ids = [...new Set(uploads.flatMap(runnerRunIds))]
+    if (!ids.length) return
+    let cancelled = false
+    Promise.all(ids.map(async (id) => [id, await fetchRunnerBundle(id)] as const))
+      .then((entries) => {
+        if (cancelled) return
+        const refreshed = new Map(entries.filter((entry): entry is readonly [string, UploadBundle] => entry[1] != null))
+        if (!refreshed.size) return
+        setUploads((prev) => {
+          let changed = false
+          const next = prev.map((bundle) => {
+            const replacement = runnerRunIds(bundle).map((id) => refreshed.get(id)).find(Boolean)
+            if (!replacement) return bundle
+            if (JSON.stringify(bundle) === JSON.stringify(replacement)) return bundle
+            changed = true
+            return replacement
+          })
+          if (!changed) return prev
+          try { localStorage.setItem(UP_KEY, JSON.stringify(next)) } catch { /* quota */ }
+          return next
+        })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [uploads])
 
   const data: Dataset | null = base
     ? [TOUR_BUNDLE, ...uploads].reduce<Dataset>((acc, u) => ({
