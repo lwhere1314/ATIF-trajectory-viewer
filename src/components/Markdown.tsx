@@ -55,10 +55,10 @@ function inline(text: string, keyBase: string): ReactNode[] {
   return nodes
 }
 
-function Table({ rows, key }: { rows: string[][]; key: string }) {
+function Table({ rows }: { rows: string[][] }) {
   const [head, ...body] = rows
   return (
-    <div key={key} className="my-2 overflow-x-auto rounded-lg border border-ink-700">
+    <div className="my-2 overflow-x-auto rounded-lg border border-ink-700">
       <table className="w-full text-left text-[13px]">
         <thead className="bg-ink-800 text-xs uppercase tracking-wide text-zinc-400">
           <tr>{head.map((c, i) => <th key={i} className="px-3 py-1.5 font-medium">{inline(c, `th${i}`)}</th>)}</tr>

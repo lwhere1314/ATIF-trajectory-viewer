@@ -4,7 +4,7 @@ import AftReference from './AftReference'
 import { useAuth } from '../lib/auth'
 import {
   buildAftPrompt, runAft,
-  aftLabel, ENGINE_MODELS, ENGINE_LABEL, EFFORTS,
+  aftLabel, DEFAULT_BASE_URLS, ENGINE_MODELS, ENGINE_LABEL, EFFORTS,
   type AftConfig, type AftEngine, type AftReport, type AftMode,
 } from '../lib/aft'
 import type { Agent, Run, Task, Vendor } from '../lib/types'
@@ -18,7 +18,7 @@ const closenessStyle: Record<string, string> = {
 }
 
 function loadCfg(): AftConfig {
-  const base: AftConfig = { engine: 'claude', model: ENGINE_MODELS.claude[0], effort: 'medium', apiKey: '' }
+  const base: AftConfig = { engine: 'claude', model: ENGINE_MODELS.claude[0], effort: 'medium', baseUrl: '', apiKey: '' }
   try {
     return { ...base, ...JSON.parse(localStorage.getItem(CFG_KEY) ?? '{}') }
   } catch {
@@ -159,6 +159,14 @@ export default function AftPanel({
               className="w-full rounded border border-ink-700 bg-ink-950 px-2 py-1 font-mono text-zinc-200 outline-none focus:border-accent" />
           </Field>
 
+          <Field label="Base URL">
+            <input value={cfg.baseUrl ?? ''} onChange={(e) => saveCfg({ ...cfg, baseUrl: e.target.value })} placeholder={DEFAULT_BASE_URLS[cfg.engine]}
+              className="w-full rounded border border-ink-700 bg-ink-950 px-2 py-1 font-mono text-zinc-200 outline-none focus:border-accent" />
+            <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">
+              Optional. Leave blank for the default endpoint; provider-compatible gateways can use either a host or a /v1 base.
+            </p>
+          </Field>
+
           <Field label="Reasoning effort">
             <div className="flex gap-1">
               {EFFORTS.map((e) => (
@@ -173,7 +181,7 @@ export default function AftPanel({
               className="w-full rounded border border-ink-700 bg-ink-950 px-2 py-1 text-zinc-200 outline-none focus:border-accent" />
           </Field>
           <p className="text-[10px] leading-relaxed text-zinc-600">
-            Calls {cfg.engine === 'claude' ? 'the Anthropic API' : 'the OpenAI API'} directly from this browser. The key is stored only in localStorage; never uploaded anywhere.
+            Calls {cfg.engine === 'claude' ? 'the Anthropic Messages API' : 'an OpenAI-compatible chat API'} directly from this browser. The key and base URL are stored only in localStorage; never uploaded anywhere.
           </p>
         </div>
       )}

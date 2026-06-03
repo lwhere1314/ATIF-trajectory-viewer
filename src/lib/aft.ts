@@ -64,6 +64,8 @@ export interface AftConfig {
   engine: AftEngine
   model: string
   effort: AftEffort
+  /** Optional API base URL for provider-compatible gateways. */
+  baseUrl?: string
   /** API key — kept in the browser only; the audit is a direct browser call. */
   apiKey: string
 }
@@ -73,6 +75,10 @@ export const ENGINE_MODELS: Record<AftEngine, string[]> = {
   codex: ['gpt-5.1-codex', 'gpt-5.1', 'gpt-5-codex'],
 }
 export const ENGINE_LABEL: Record<AftEngine, string> = { claude: 'Claude Code', codex: 'Codex' }
+export const DEFAULT_BASE_URLS: Record<AftEngine, string> = {
+  claude: 'https://api.anthropic.com',
+  codex: 'https://api.openai.com',
+}
 export const EFFORTS: AftEffort[] = ['minimal', 'low', 'medium', 'high']
 
 const THINK_BUDGET: Record<AftEffort, number> = { minimal: 0, low: 2048, medium: 6144, high: 12288 }
@@ -135,6 +141,14 @@ export function buildAftPrompt(template: string, run: Run, task: Task, agent?: A
 
 // --- provider calls (direct from browser) ----------------------------------
 
+function endpoint(cfg: AftConfig, path: string): string {
+  const base = (cfg.baseUrl?.trim() || DEFAULT_BASE_URLS[cfg.engine]).replace(/\/+$/, '')
+  if (path.endsWith('/messages') && base.endsWith('/messages')) return base
+  if (path.endsWith('/chat/completions') && base.endsWith('/chat/completions')) return base
+  if (base.endsWith('/v1') && path.startsWith('/v1/')) return `${base}${path.slice(3)}`
+  return `${base}${path}`
+}
+
 async function callAnthropic(cfg: AftConfig, prompt: string): Promise<string> {
   const budget = THINK_BUDGET[cfg.effort] ?? 0
   const body: Record<string, unknown> = {
@@ -143,7 +157,7 @@ async function callAnthropic(cfg: AftConfig, prompt: string): Promise<string> {
     messages: [{ role: 'user', content: prompt }],
   }
   if (budget >= 1024) body.thinking = { type: 'enabled', budget_tokens: budget }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(endpoint(cfg, '/v1/messages'), {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -159,7 +173,7 @@ async function callAnthropic(cfg: AftConfig, prompt: string): Promise<string> {
 }
 
 async function callOpenAI(cfg: AftConfig, prompt: string): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(endpoint(cfg, '/v1/chat/completions'), {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({
