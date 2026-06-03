@@ -1,0 +1,86 @@
+{
+  "task": {
+    "id": "terminal-bench/train-fasttext",
+    "benchmark": "terminal-bench",
+    "task_broken": false,
+    "broken_reason": null
+  },
+  "trial": {
+    "id": "local-tb21-train-fasttext-claude-code-kimi-k26-20260528",
+    "harness": "Claude Code",
+    "model": "kimi-k2.6",
+    "reward": 0.0,
+    "exception_type": null,
+    "n_steps": 90
+  },
+  "outcome": {
+    "closeness": "near-miss",
+    "step_where_lost": 89,
+    "unproductive_iteration_count": 1,
+    "headline": "Completed the FastText workflow and produced /app/model.bin, but the private verifier landed just below threshold at P@1=0.617.",
+    "what_verifier_checked": "FastText CLI P@1 must reach at least 0.62 and the final model must stay under 150 MiB.",
+    "what_agent_produced": "A final FastText model artifact that satisfied the size check but missed the private accuracy threshold by roughly 0.003 P@1.",
+    "exact_failure_quote": "P@1 0.617",
+    "test_stdout_available": true
+  },
+  "failure_modes": [
+    {
+      "name": "Stopped at a threshold-near model without a final repair loop",
+      "description": "The run found the correct tool family and produced an artifact, but did not perform the last round of accuracy-margin search needed to move private P@1 from 0.617 to at least 0.62.",
+      "evidence_quote": "P@1 0.617",
+      "step_indices": [
+        89
+      ],
+      "aft": {
+        "A": "A5",
+        "B": "B1",
+        "C": "C6.5",
+        "D": "D2"
+      },
+      "counterfactual": {
+        "single_step_fix": false,
+        "X": "Continue the validation loop by adjusting the size-accuracy frontier, then re-run the private-style verifier before finalizing /app/model.bin.",
+        "Y": "The run finalized a near-miss artifact whose measured private P@1 stayed below the acceptance threshold."
+      },
+      "seen_by": [
+        "local-curated:r1"
+      ],
+      "occurrences": 1
+    },
+    {
+      "name": "Insufficient final verifier closure",
+      "description": "The trajectory was semantically close, but the final decision criterion was the conjunction of accuracy and size; the artifact was promoted without evidence that both gates were above threshold.",
+      "evidence_quote": "Completed normally but reward remained 0.0.",
+      "step_indices": [
+        89
+      ],
+      "aft": {
+        "A": "A4",
+        "B": "B1",
+        "C": "C7.3",
+        "D": "D2"
+      },
+      "counterfactual": {
+        "single_step_fix": false,
+        "X": "Treat any P@1 below 0.62 as a hard failure and search one more constrained model candidate before stopping.",
+        "Y": "The final model was close enough to be useful as repair/margin data, but not a clean positive trajectory."
+      },
+      "seen_by": [
+        "local-curated:r1"
+      ],
+      "occurrences": 1
+    }
+  ],
+  "reward_hacking": {
+    "verdict": "clean",
+    "categories_triggered": [],
+    "evidence": "The run trained a real FastText classifier and produced a normal model artifact; the failure is margin/verification, not grader manipulation."
+  },
+  "task_quality": {
+    "verdict": "accept",
+    "issues": [],
+    "verifier_structurally_hackable": false,
+    "structural_hackability_notes": "The task gate is straightforward: hidden-distribution FastText P@1 and model byte size."
+  },
+  "notes_for_aggregation": "Curated local SSD AFT-style report; treat as near-miss repair/margin data rather than a generic negative."
+}

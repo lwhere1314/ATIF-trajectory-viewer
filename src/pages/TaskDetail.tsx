@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import clsx from 'clsx'
-import { useParams } from 'react-router-dom'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Loading, Pill, RangeStat, StatusBadge } from '../components/ui'
 import EnvironmentPanel from '../components/EnvironmentPanel'
 import EnvFileBrowser from '../components/EnvFileBrowser'
+import TaskFailureSynthesis from '../components/TaskFailureSynthesis'
 import { FORMAT_LABELS, fmtDuration, fmtPct, fmtReward, prettyModel } from '../lib/format'
 import { aggregate, useDatasetStore, useLookups } from '../lib/dataset'
-import type { Stat } from '../lib/types'
+import type { Agent, Stat } from '../lib/types'
 
 export default function TaskDetail() {
   const { taskId } = useParams()
@@ -21,12 +21,26 @@ export default function TaskDetail() {
   if (error) return <div className="p-8 text-rose-400">Failed to load dataset: {error}</div>
   if (!data || !lk) return <Loading />
   const task = lk.task(taskId!)
-  if (!task) return <div className="p-8 text-zinc-400">Task not found.</div>
+  if (!task) {
+    return (
+      <div className="p-8">
+        <section className="card max-w-xl p-6">
+          <h1 className="text-lg font-semibold text-white">Task not found.</h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            This dataset may not include that task id. Browse or search the current task catalog instead.
+          </p>
+          <Link to="/tasks" className="btn-primary mt-5 inline-flex">Open Tasks</Link>
+        </section>
+      </div>
+    )
+  }
 
   const vendor = lk.vendor(task.vendorId)
   const runs = lk.runsForTask(task.id)
   const agg = aggregate(runs)
   const meta = task.metadata ?? {}
+  const agents = new Map<string, Agent>()
+  for (const a of data.agents) agents.set(a.id, a)
 
   // --- run-table ordering + filtering ---------------------------------------
   const HARNESS_NA = 'not reported'
@@ -68,7 +82,14 @@ export default function TaskDetail() {
       <PageHeader
         title={task.title}
         subtitle={`${vendor?.name} · ${FORMAT_LABELS[task.source]}${task.category ? ` · ${task.category}` : ''}`}
-        actions={task.difficulty ? <Pill className="capitalize">{task.difficulty}</Pill> : undefined}
+        actions={(
+          <>
+            {task.id === 'hi-tb-train-fasttext' && (
+              <Link to="/cases/train-fasttext" className="btn-primary">Open case study</Link>
+            )}
+            {task.difficulty ? <Pill className="capitalize">{task.difficulty}</Pill> : null}
+          </>
+        )}
       />
       <div className="space-y-8 p-8">
         {/* Instruction is intentionally NOT shown here — visitors find it as
@@ -150,6 +171,8 @@ export default function TaskDetail() {
             </div>
           </section>
         )}
+
+        <TaskFailureSynthesis task={task} runs={runs} agents={agents} />
 
         {/* Runs */}
         <section data-tour="task-runs">

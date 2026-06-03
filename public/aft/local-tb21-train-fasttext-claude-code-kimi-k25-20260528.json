@@ -1,0 +1,86 @@
+{
+  "task": {
+    "id": "terminal-bench/train-fasttext",
+    "benchmark": "terminal-bench",
+    "task_broken": false,
+    "broken_reason": null
+  },
+  "trial": {
+    "id": "local-tb21-train-fasttext-claude-code-kimi-k25-20260528",
+    "harness": "Claude Code",
+    "model": "kimi-k2.5",
+    "reward": 0.0,
+    "exception_type": "AgentTimeoutError",
+    "n_steps": 76
+  },
+  "outcome": {
+    "closeness": "far",
+    "step_where_lost": 75,
+    "unproductive_iteration_count": 2,
+    "headline": "Timed out before producing the required /app/model.bin artifact; the verifier could not load a model.",
+    "what_verifier_checked": "The verifier loads /app/model.bin, checks FastText P@1, and enforces the size limit.",
+    "what_agent_produced": "No final model artifact was available at /app/model.bin by the time the agent timed out.",
+    "exact_failure_quote": "/app/model.bin cannot be opened for loading",
+    "test_stdout_available": true
+  },
+  "failure_modes": [
+    {
+      "name": "Timeout before required artifact creation",
+      "description": "The agent exhausted its execution budget before placing a final FastText model at /app/model.bin, so the verifier failed before any meaningful accuracy/size measurement.",
+      "evidence_quote": "AgentTimeoutError: Agent execution timed out after 3600.0 seconds",
+      "step_indices": [
+        75
+      ],
+      "aft": {
+        "A": "A6",
+        "B": "B4",
+        "C": "C6.2",
+        "D": "D3"
+      },
+      "counterfactual": {
+        "single_step_fix": true,
+        "X": "Before continuing exploration, promote the best current candidate to /app/model.bin and run a quick load/size check.",
+        "Y": "The run ended with no loadable final artifact."
+      },
+      "seen_by": [
+        "local-curated:r1"
+      ],
+      "occurrences": 1
+    },
+    {
+      "name": "Missing final artifact validation",
+      "description": "The trajectory did not close with a minimal verifier-equivalent check that /app/model.bin exists and can be loaded by the FastText CLI.",
+      "evidence_quote": "/app/model.bin cannot be opened for loading",
+      "step_indices": [
+        75
+      ],
+      "aft": {
+        "A": "A4",
+        "B": "B5",
+        "C": "C7.4",
+        "D": "D3"
+      },
+      "counterfactual": {
+        "single_step_fix": true,
+        "X": "Run `test -s /app/model.bin` and `fasttext test /app/model.bin ...` before ending or starting any long loop.",
+        "Y": "The final verifier encountered a missing model file."
+      },
+      "seen_by": [
+        "local-curated:r1"
+      ],
+      "occurrences": 1
+    }
+  ],
+  "reward_hacking": {
+    "verdict": "clean",
+    "categories_triggered": [],
+    "evidence": "No evidence of private-test access or grader manipulation; the run failed through timeout and missing artifact."
+  },
+  "task_quality": {
+    "verdict": "accept",
+    "issues": [],
+    "verifier_structurally_hackable": false,
+    "structural_hackability_notes": "The verifier failure is aligned with the task requirement: no loadable model means no valid solution."
+  },
+  "notes_for_aggregation": "Curated local SSD AFT-style report generated from timeout exception and verifier logs."
+}

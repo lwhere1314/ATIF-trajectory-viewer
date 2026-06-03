@@ -9,6 +9,7 @@ import Tasks from './pages/Tasks'
 import Upload from './pages/Upload'
 import TaskDetail from './pages/TaskDetail'
 import TrajectoryViewer from './pages/TrajectoryViewer'
+import CaseStudy from './pages/CaseStudy'
 import { trackPageview } from './lib/analytics'
 
 // Router-aware page-view tracker — fires for the initial render AND every
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="insights" element={<AftInsights />} />
           <Route path="showcase" element={<Showcase />} />
           <Route path="tasks" element={<Tasks />} />
+          <Route path="cases/train-fasttext" element={<CaseStudy />} />
           <Route path="upload" element={<Upload />} />
           <Route path="tasks/:taskId" element={<TaskDetail />} />
           <Route path="tasks/:taskId/runs/:runId" element={<TrajectoryViewer />} />

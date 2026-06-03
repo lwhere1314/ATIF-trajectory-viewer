@@ -142,6 +142,9 @@ export interface Run {
   hasVerifierLog?: boolean
   turns: number
   durationSec: number | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  sourceRunRoot?: string | null
   /** Distinct artifacts the run touched (derived from step mutations). */
   artifacts?: string[]
   tokens?: {

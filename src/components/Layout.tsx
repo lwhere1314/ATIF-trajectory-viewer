@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Rocket, FolderTree, Upload as UploadIcon, Sparkles,
-  PanelLeftClose, PanelLeftOpen, Compass, BarChart3, type LucideIcon,
+  PanelLeftClose, PanelLeftOpen, Compass, BarChart3, Microscope, type LucideIcon,
 } from 'lucide-react'
 import { useDataset } from '../lib/dataset'
 import { startTour, buildTourSteps } from '../lib/tour'
@@ -12,6 +12,7 @@ const nav: { to: string; label: string; Icon: LucideIcon; end?: boolean }[] = [
   { to: '/quickstart', label: 'Quick start', Icon: Rocket },
   { to: '/showcase', label: 'Feature showcase', Icon: Sparkles },
   { to: '/tasks', label: 'Tasks', Icon: FolderTree },
+  { to: '/cases/train-fasttext', label: 'Train FastText', Icon: Microscope },
   { to: '/insights', label: 'AFT insights', Icon: BarChart3 },
   { to: '/upload', label: 'Upload', Icon: UploadIcon },
 ]

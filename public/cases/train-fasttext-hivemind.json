@@ -1,0 +1,1115 @@
+{
+  "id": "train-fasttext-hivemind",
+  "title": "Train FastText: Agent Autoresearch Hivemind",
+  "taskId": "hi-tb-train-fasttext",
+  "generatedAt": "2026-06-03T07:03:29.889778+00:00",
+  "localRunRoot": "/Volumes/SSD/terminal-bench-harbor/harbor/runs/tb21-train-fasttext-codex-gpt55-host-20260603T130932",
+  "oracle": {
+    "solvePath": "/Users/hugo/Desktop/super-refactor/harbor/datasets/terminal-bench-2.1-proxy/tasks/train-fasttext/solution/solve.sh",
+    "coreCommand": "fasttext supervised -input /app/data/train.txt -output model -wordNgrams 2 -dim 5",
+    "recipe": {
+      "wordNgrams": 2,
+      "dim": 5,
+      "quantize": false,
+      "insight": "Optimize the size constraint first; Yelp same-distribution classification does not need a high-dimensional embedding to cross 0.62."
+    }
+  },
+  "summary": {
+    "runsAnalyzed": 25,
+    "runsWithStartedAt": 25,
+    "passedOrArtifactValid": 1,
+    "officialLeaderboardFailures": 24,
+    "featureFrequencies": {
+      "mentions_fasttext": 25,
+      "converted_parquet": 24,
+      "trained_supervised": 16,
+      "char_ngrams": 7,
+      "quantized": 11,
+      "autotune": 4
+    },
+    "bestObservedPAt1": 0.708,
+    "pAt1": {
+      "count": 11,
+      "min": 0.5538,
+      "max": 0.708,
+      "mean": 0.6163454545454545
+    },
+    "durationSec": {
+      "count": 25,
+      "min": 261.251238,
+      "max": 13701.54674,
+      "mean": 5812.90257292
+    },
+    "stepCount": {
+      "count": 25,
+      "min": 2.0,
+      "max": 288.0,
+      "mean": 84.8
+    }
+  },
+  "hivemindConclusion": [
+    "Across harnesses and models, the search converges on the same decomposition: convert parquet to FastText label-text format, train supervised fastText, and manage the accuracy-size frontier with n-grams, dimension, bucket size, and sometimes quantization.",
+    "The main behavioral difference is not task understanding; it is optimization order. Human oracle starts with a tiny dim=5 bigram model because model size is the binding constraint. Agents usually start with a stronger model and try to compress later.",
+    "The cleanest RL signal is the validation loop: runs that measure P@1 and bytes after each candidate make recoverable progress; runs that produce plausible recipes without final verifier closure are much weaker preference negatives."
+  ],
+  "localComparisons": [
+    {
+      "runId": "local-tb21-train-fasttext-host-codex-gpt55-20260603t130932",
+      "label": "Host Codex / GPT-5.5",
+      "outcome": "artifact-valid",
+      "verifierPAt1": 0.622,
+      "modelBytes": 124531872,
+      "startedAt": "2026-06-03T13:09:32.848474",
+      "finishedAt": "2026-06-03T14:11:42.021289",
+      "sourceRunRoot": "/Volumes/SSD/terminal-bench-harbor/harbor/runs/tb21-train-fasttext-codex-gpt55-host-20260603T130932",
+      "takeaway": "Closed the validation loop: public P@1=0.628, supplemental private-distribution P@1=0.622, final artifact under 150 MiB."
+    },
+    {
+      "runId": "local-tb21-train-fasttext-claude-code-kimi-k26-20260528",
+      "label": "Claude Code / Kimi K2.6",
+      "outcome": "private near-miss",
+      "verifierPAt1": 0.617,
+      "modelBytes": null,
+      "startedAt": "2026-05-28T05:34:02.227371Z",
+      "finishedAt": "2026-05-28T05:54:31.099191Z",
+      "sourceRunRoot": "/Volumes/SSD/terminal-bench-harbor/harbor/runs/tb21-train-fasttext-claude-code-kimi-k26/train-fasttext__BxthwJx",
+      "takeaway": "Completed the task flow and produced /app/model.bin, but the official private verifier landed just below threshold at P@1=0.617."
+    },
+    {
+      "runId": "local-tb21-train-fasttext-claude-code-kimi-k25-20260528",
+      "label": "Claude Code / Kimi K2.5",
+      "outcome": "timeout/no artifact",
+      "verifierPAt1": null,
+      "modelBytes": null,
+      "startedAt": "2026-05-28T04:05:58.823400Z",
+      "finishedAt": "2026-05-28T05:32:27.993487Z",
+      "sourceRunRoot": "/Volumes/SSD/terminal-bench-harbor/harbor/runs/tb21-train-fasttext-claude-code-kimi-k25/train-fasttext__oLPYkcK",
+      "takeaway": "Timed out before final artifact creation; verifier could not open /app/model.bin."
+    }
+  ],
+  "clusters": [
+    {
+      "id": "exploratory-tooling-failure",
+      "label": "Exploratory tooling failure",
+      "count": 11,
+      "interpretation": "The trajectory spent most work on environment, package, or data handling rather than the size-accuracy frontier.",
+      "representativeRunIds": [
+        "hi-tb-train-fasttext-tb-train-fasttext-5691edf9-a5cf-48bd-b77a-21a52265eb72",
+        "hi-tb-train-fasttext-tb-train-fasttext-5ba204c6-5a1f-40f1-968e-e83c8a561dd9",
+        "hi-tb-train-fasttext-tb-train-fasttext-689e01fd-9c1a-4358-9544-7c3bad103867",
+        "hi-tb-train-fasttext-tb-train-fasttext-768bdcbf-e5ef-42e3-a7aa-6e8bbf3d1a3c"
+      ],
+      "models": [
+        "Claude Code / hy3-preview",
+        "Claude Code / kimi-k2.6",
+        "Claude Code / m2.7",
+        "Claude Code / v4-pro",
+        "Gemini CLI / 3.1-pro-preview",
+        "Terminus-2 / hy3-preview",
+        "Terminus-2 / m2.7",
+        "Terminus-2 / mimo-v2.5-pro",
+        "Terminus-2 / qwen3.7-max",
+        "Terminus-2 / v4-pro"
+      ]
+    },
+    {
+      "id": "uncompressed-or-size-blind",
+      "label": "Uncompressed or size-blind fastText",
+      "count": 5,
+      "interpretation": "The run trained supervised fastText but did not close the model-size constraint early enough.",
+      "representativeRunIds": [
+        "hi-tb-train-fasttext-tb-train-fasttext-18fbf74f-2a8a-429e-baa7-ae82452aec4d",
+        "hi-tb-train-fasttext-tb-train-fasttext-7c866ac0-26e9-4d67-aee7-f0e1dccdf550",
+        "hi-tb-train-fasttext-tb-train-fasttext-d5021a58-9a49-4ca2-b754-6451bf026446",
+        "hi-tb-train-fasttext-tb-train-fasttext-f38f5fdf-4b25-4c31-9c41-5271483c60b6"
+      ],
+      "models": [
+        "Claude Code / claude-opus-4-7",
+        "Claude Code / glm-5.1",
+        "Terminus-2 / kimi-k2.6",
+        "qwen-coder / qwen3.6-max-preview",
+        "qwen-coder / qwen3.7-max"
+      ]
+    },
+    {
+      "id": "accuracy-near-miss",
+      "label": "Accuracy near miss",
+      "count": 3,
+      "interpretation": "The run pursued the right classifier family and got close on P@1, but its threshold/size/verification closure was incomplete.",
+      "representativeRunIds": [
+        "hi-tb-train-fasttext-tb-train-fasttext-2c45a6c3-c9c9-4995-ac89-4715cee82f06",
+        "hi-tb-train-fasttext-tb-train-fasttext-fe48ab0a-9fd5-47b3-b60d-30b5006b33e5",
+        "local-tb21-train-fasttext-claude-code-kimi-k25-20260528"
+      ],
+      "models": [
+        "Claude Code / kimi-k2.5",
+        "Codex CLI / gpt-5.5",
+        "Terminus-2 / glm-5.1"
+      ]
+    },
+    {
+      "id": "compressed-ngram-near-miss",
+      "label": "Compressed n-gram near miss",
+      "count": 3,
+      "interpretation": "The run used quantization/ngrams and saw plausible validation numbers, but did not land a clean final verified artifact.",
+      "representativeRunIds": [
+        "hi-tb-train-fasttext-tb-train-fasttext-53621a0e-dc55-4cc9-90a9-c22f31762f9b",
+        "hi-tb-train-fasttext-tb-train-fasttext-d7722d5e-e4ab-4f17-bbbe-cf984fe78b97",
+        "local-tb21-train-fasttext-claude-code-kimi-k26-20260528"
+      ],
+      "models": [
+        "Claude Code / kimi-k2.6",
+        "Terminus-2 / 3.1-pro-preview",
+        "Terminus-2 / claude-opus-4-7"
+      ]
+    },
+    {
+      "id": "agent-bootstrap-failure",
+      "label": "Agent bootstrap failure",
+      "count": 1,
+      "interpretation": "The harness or agent command failed before meaningful task search.",
+      "representativeRunIds": [
+        "hi-tb-train-fasttext-tb-train-fasttext-2e7dfe2b-543f-48ac-81a3-14f46b750a55"
+      ],
+      "models": [
+        "Claude Code / mimo-v2.5-pro"
+      ]
+    },
+    {
+      "id": "closed-loop-valid-artifact",
+      "label": "Validated closed-loop artifact",
+      "count": 1,
+      "interpretation": "The agent trained, measured, compressed, promoted /app/model.bin, and rechecked size/accuracy. This is the best agent-derived trajectory for positive RL signal.",
+      "representativeRunIds": [
+        "local-tb21-train-fasttext-host-codex-gpt55-20260603t130932"
+      ],
+      "models": [
+        "Host Codex / gpt-5.5"
+      ]
+    },
+    {
+      "id": "valid-or-near-valid-but-timeout",
+      "label": "Valid or near-valid, but timed out",
+      "count": 1,
+      "interpretation": "The run found the right fastText ingredients but spent too long in training, quantization, or cleanup, so the official harness timed out.",
+      "representativeRunIds": [
+        "hi-tb-train-fasttext-tb-train-fasttext-a7da2f7a-69cd-40c0-913d-574cedffd1d2"
+      ],
+      "models": [
+        "Terminus-2 / gpt-5.5"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-18fbf74f-2a8a-429e-baa7-ae82452aec4d",
+      "agentId": "terminus-2-kimi-k2-6-harbor-index",
+      "harness": "Terminus-2",
+      "model": "kimi-k2.6",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 84,
+      "durationSec": 6063.453023,
+      "startedAt": "2026-05-21T20:59:48.635444+00:00",
+      "finishedAt": "2026-05-21T22:39:13.711338+00:00",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "uncompressed-or-size-blind",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": 0.5538,
+        "max_size_bytes": 763176323,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-18fbf74f-2a8a-429e-baa7-ae82452aec4d"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-2c45a6c3-c9c9-4995-ac89-4715cee82f06",
+      "agentId": "codex-cli-gpt-5-5-harbor-index",
+      "harness": "Codex CLI",
+      "model": "gpt-5.5",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 79,
+      "durationSec": 1752.062402,
+      "startedAt": "2026-05-20T21:02:42.444Z",
+      "finishedAt": "2026-05-20T21:30:28.566Z",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "accuracy-near-miss",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": true,
+        "dims": [
+          50,
+          100
+        ],
+        "wordNgrams": [
+          2
+        ],
+        "buckets": [
+          200000,
+          250000
+        ],
+        "best_p_at_1": 0.708,
+        "max_size_bytes": 758821739,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-2c45a6c3-c9c9-4995-ac89-4715cee82f06"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-2e7dfe2b-543f-48ac-81a3-14f46b750a55",
+      "agentId": "claude-code-mimo-v2-5-pro-harbor-index",
+      "harness": "Claude Code",
+      "model": "mimo-v2.5-pro",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 2,
+      "durationSec": 261.251238,
+      "startedAt": "2026-05-25T22:33:21.660Z",
+      "finishedAt": "2026-05-25T22:36:23.827Z",
+      "sourceRunRoot": null,
+      "failureReason": "NonZeroAgentExitCodeError: Command failed (exit 1): umask 000; export PATH=\"$HOME/.local/bin:$PATH\"; claude --verbose --output-format=stream-json --permission-mode=bypassPermissions --print -- 'Please train a fasttext model on the yelp data in the data/ folder.\n\nThe final model size needs to be less than 150MB but get at least 0.62 accuracy on a private test set that comes from the same yelp revie",
+      "cluster": "agent-bootstrap-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": false,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": null,
+        "under_150mb_mentioned": false
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-2e7dfe2b-543f-48ac-81a3-14f46b750a55"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-53621a0e-dc55-4cc9-90a9-c22f31762f9b",
+      "agentId": "terminus-2-claude-opus-4-7-harbor-index",
+      "harness": "Terminus-2",
+      "model": "claude-opus-4-7",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 36,
+      "durationSec": 1545.635833,
+      "startedAt": "2026-05-21T11:04:55.486508+00:00",
+      "finishedAt": "2026-05-21T11:29:22.053959+00:00",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "compressed-ngram-near-miss",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [
+          50,
+          100
+        ],
+        "wordNgrams": [
+          2,
+          3
+        ],
+        "buckets": [
+          100,
+          1000000,
+          2000000
+        ],
+        "best_p_at_1": 0.636,
+        "max_size_bytes": 511825946,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-53621a0e-dc55-4cc9-90a9-c22f31762f9b"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-5691edf9-a5cf-48bd-b77a-21a52265eb72",
+      "agentId": "terminus-2-m2-7-harbor-index",
+      "harness": "Terminus-2",
+      "model": "m2.7",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 90,
+      "durationSec": 7287.287056,
+      "startedAt": "2026-05-21T13:05:14.359582+00:00",
+      "finishedAt": "2026-05-21T15:05:04.282155+00:00",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-5691edf9-a5cf-48bd-b77a-21a52265eb72"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-5ba204c6-5a1f-40f1-968e-e83c8a561dd9",
+      "agentId": "claude-code-m2-7-harbor-index",
+      "harness": "Claude Code",
+      "model": "m2.7",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 136,
+      "durationSec": 7339.310773,
+      "startedAt": "2026-05-20T17:14:30.197Z",
+      "finishedAt": "2026-05-20T19:10:09.325Z",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-5ba204c6-5a1f-40f1-968e-e83c8a561dd9"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-689e01fd-9c1a-4358-9544-7c3bad103867",
+      "agentId": "claude-code-hy3-preview-harbor-index",
+      "harness": "Claude Code",
+      "model": "hy3-preview",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 288,
+      "durationSec": 5127.121554,
+      "startedAt": "2026-05-21T01:43:13.757Z",
+      "finishedAt": "2026-05-21T03:07:22.338Z",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": false,
+        "char_ngrams": true,
+        "dims": [
+          10,
+          50,
+          80,
+          100
+        ],
+        "wordNgrams": [
+          1,
+          2,
+          3
+        ],
+        "buckets": [
+          0,
+          100,
+          1000,
+          10000,
+          50000,
+          150000,
+          180000,
+          200000,
+          300000,
+          400000,
+          500000
+        ],
+        "best_p_at_1": null,
+        "max_size_bytes": 926062128,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-689e01fd-9c1a-4358-9544-7c3bad103867"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-768bdcbf-e5ef-42e3-a7aa-6e8bbf3d1a3c",
+      "agentId": "terminus-2-v4-pro-harbor-index",
+      "harness": "Terminus-2",
+      "model": "v4-pro",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 85,
+      "durationSec": 5712.759367,
+      "startedAt": "2026-05-21T11:37:15.993854+00:00",
+      "finishedAt": "2026-05-21T13:10:57.993257+00:00",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": true,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-768bdcbf-e5ef-42e3-a7aa-6e8bbf3d1a3c"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-7c866ac0-26e9-4d67-aee7-f0e1dccdf550",
+      "agentId": "claude-code-claude-opus-4-7-harbor-index",
+      "harness": "Claude Code",
+      "model": "claude-opus-4-7",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 108,
+      "durationSec": 6931.661935,
+      "startedAt": "2026-05-20T16:38:40.155Z",
+      "finishedAt": "2026-05-20T18:32:50.849Z",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "uncompressed-or-size-blind",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 4294967296,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-7c866ac0-26e9-4d67-aee7-f0e1dccdf550"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-806d9997-f59f-4192-b536-8feb5d748f89",
+      "agentId": "claude-code-m2-7-harbor-index",
+      "harness": "Claude Code",
+      "model": "m2.7",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 113,
+      "durationSec": 7289.250748,
+      "startedAt": "2026-05-21T01:57:30.008Z",
+      "finishedAt": "2026-05-21T03:50:02.149Z",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [
+          25
+        ],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-806d9997-f59f-4192-b536-8feb5d748f89"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-932fa212-d326-462a-8b3c-919202fffd7d",
+      "agentId": "gemini-cli-3-1-pro-preview-harbor-index",
+      "harness": "Gemini CLI",
+      "model": "3.1-pro-preview",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 34,
+      "durationSec": 7047.514782,
+      "startedAt": "2026-05-20T16:32:49.421Z",
+      "finishedAt": "2026-05-20T18:28:16.292Z",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": null,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-932fa212-d326-462a-8b3c-919202fffd7d"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-990a9d3d-06d9-4f8d-8f0e-6b19dd941f93",
+      "agentId": "terminus-2-mimo-v2-5-pro-harbor-index",
+      "harness": "Terminus-2",
+      "model": "mimo-v2.5-pro",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 67,
+      "durationSec": 3539.632452,
+      "startedAt": "2026-05-21T16:57:37.854851+00:00",
+      "finishedAt": "2026-05-21T17:55:16.728631+00:00",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 969854044,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-990a9d3d-06d9-4f8d-8f0e-6b19dd941f93"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-a7da2f7a-69cd-40c0-913d-574cedffd1d2",
+      "agentId": "terminus-2-gpt-5-5-harbor-index",
+      "harness": "Terminus-2",
+      "model": "gpt-5.5",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 93,
+      "durationSec": 7321.939008,
+      "startedAt": "2026-05-21T14:57:20.457460+00:00",
+      "finishedAt": "2026-05-21T16:54:52.843266+00:00",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "valid-or-near-valid-but-timeout",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": true,
+        "char_ngrams": true,
+        "dims": [
+          50,
+          64,
+          80,
+          100
+        ],
+        "wordNgrams": [
+          2,
+          3
+        ],
+        "buckets": [
+          200000,
+          220000,
+          300000,
+          500000
+        ],
+        "best_p_at_1": 0.629,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-a7da2f7a-69cd-40c0-913d-574cedffd1d2"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-c5e2fbad-2f5c-402d-88cf-466b84d1dfce",
+      "agentId": "claude-code-kimi-k2-6-harbor-index",
+      "harness": "Claude Code",
+      "model": "kimi-k2.6",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 61,
+      "durationSec": 7983.799547,
+      "startedAt": "2026-05-21T12:50:24.269Z",
+      "finishedAt": "2026-05-21T14:45:56.660Z",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 1083176323,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-c5e2fbad-2f5c-402d-88cf-466b84d1dfce"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-d210da41-6c2e-49c0-89a5-d1f70bc4b590",
+      "agentId": "terminus-2-hy3-preview-harbor-index",
+      "harness": "Terminus-2",
+      "model": "hy3-preview",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 107,
+      "durationSec": 7666.977493,
+      "startedAt": "2026-05-21T14:10:00.832343+00:00",
+      "finishedAt": "2026-05-21T16:08:44.304926+00:00",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": false,
+        "char_ngrams": true,
+        "dims": [
+          50,
+          100
+        ],
+        "wordNgrams": [
+          2,
+          3
+        ],
+        "buckets": [
+          50000,
+          100000,
+          200000
+        ],
+        "best_p_at_1": 0.596,
+        "max_size_bytes": 1707288800,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-d210da41-6c2e-49c0-89a5-d1f70bc4b590"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-d5021a58-9a49-4ca2-b754-6451bf026446",
+      "agentId": "qwen-coder-qwen3-6-max-preview-harbor-index",
+      "harness": "qwen-coder",
+      "model": "qwen3.6-max-preview",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 39,
+      "durationSec": 3855.362586,
+      "startedAt": "2026-05-20T19:42:29.977Z",
+      "finishedAt": "2026-05-20T20:45:32.881Z",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "uncompressed-or-size-blind",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": null,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-d5021a58-9a49-4ca2-b754-6451bf026446"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-d7722d5e-e4ab-4f17-bbbe-cf984fe78b97",
+      "agentId": "terminus-2-3-1-pro-preview-harbor-index",
+      "harness": "Terminus-2",
+      "model": "3.1-pro-preview",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 86,
+      "durationSec": 6023.808637,
+      "startedAt": "2026-05-21T11:31:12.049898+00:00",
+      "finishedAt": "2026-05-21T13:10:11.366594+00:00",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "compressed-ngram-near-miss",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": true,
+        "char_ngrams": true,
+        "dims": [
+          15,
+          20,
+          30,
+          50,
+          60,
+          100
+        ],
+        "wordNgrams": [
+          2,
+          3
+        ],
+        "buckets": [
+          200000,
+          250000,
+          300000,
+          500000
+        ],
+        "best_p_at_1": 0.624,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-d7722d5e-e4ab-4f17-bbbe-cf984fe78b97"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-ef755327-ed75-4931-8032-3f70baa6f14a",
+      "agentId": "claude-code-v4-pro-harbor-index",
+      "harness": "Claude Code",
+      "model": "v4-pro",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 75,
+      "durationSec": 7362.149782,
+      "startedAt": "2026-05-20T17:35:53.433Z",
+      "finishedAt": "2026-05-20T19:26:10.679Z",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": false,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 528019844,
+        "under_150mb_mentioned": false
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-ef755327-ed75-4931-8032-3f70baa6f14a"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-f38f5fdf-4b25-4c31-9c41-5271483c60b6",
+      "agentId": "claude-code-glm-5-1-harbor-index",
+      "harness": "Claude Code",
+      "model": "glm-5.1",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 47,
+      "durationSec": 13701.54674,
+      "startedAt": "2026-05-20T21:59:22.279Z",
+      "finishedAt": "2026-05-20T23:54:25.714Z",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "uncompressed-or-size-blind",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-f38f5fdf-4b25-4c31-9c41-5271483c60b6"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-f3cbff47-3e77-4487-b648-ac675369b25c",
+      "agentId": "terminus-2-qwen3-7-max-harbor-index",
+      "harness": "Terminus-2",
+      "model": "qwen3.7-max",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 111,
+      "durationSec": 7516.00474,
+      "startedAt": "2026-05-25T16:42:58.965440+00:00",
+      "finishedAt": "2026-05-25T18:42:35.566170+00:00",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "exploratory-tooling-failure",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [
+          50,
+          100
+        ],
+        "wordNgrams": [
+          1,
+          2,
+          3
+        ],
+        "buckets": [
+          10,
+          20,
+          50000,
+          80000,
+          100000,
+          120000,
+          150000,
+          160000,
+          180000,
+          200000
+        ],
+        "best_p_at_1": 0.558,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-f3cbff47-3e77-4487-b648-ac675369b25c"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-fb356738-ed2a-4da1-996c-6fbb4d98c8d2",
+      "agentId": "qwen-coder-qwen3-7-max-harbor-index",
+      "harness": "qwen-coder",
+      "model": "qwen3.7-max",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 34,
+      "durationSec": 7023.628744,
+      "startedAt": "2026-05-25T14:32:51.267Z",
+      "finishedAt": "2026-05-25T16:28:43.149Z",
+      "sourceRunRoot": null,
+      "failureReason": null,
+      "cluster": "uncompressed-or-size-blind",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": false,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [],
+        "wordNgrams": [],
+        "buckets": [],
+        "best_p_at_1": null,
+        "max_size_bytes": 424089291,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-fb356738-ed2a-4da1-996c-6fbb4d98c8d2"
+    },
+    {
+      "runId": "hi-tb-train-fasttext-tb-train-fasttext-fe48ab0a-9fd5-47b3-b60d-30b5006b33e5",
+      "agentId": "terminus-2-glm-5-1-harbor-index",
+      "harness": "Terminus-2",
+      "model": "glm-5.1",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 106,
+      "durationSec": 7286.496976,
+      "startedAt": "2026-05-21T12:59:43.852741+00:00",
+      "finishedAt": "2026-05-21T14:59:40.513749+00:00",
+      "sourceRunRoot": null,
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 7200.0 seconds",
+      "cluster": "accuracy-near-miss",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": true,
+        "char_ngrams": true,
+        "dims": [
+          30,
+          50,
+          100
+        ],
+        "wordNgrams": [
+          2,
+          3
+        ],
+        "buckets": [
+          100000,
+          200000
+        ],
+        "best_p_at_1": 0.615,
+        "max_size_bytes": 299436850,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/hi-tb-train-fasttext-tb-train-fasttext-fe48ab0a-9fd5-47b3-b60d-30b5006b33e5"
+    },
+    {
+      "runId": "local-tb21-train-fasttext-host-codex-gpt55-20260603t130932",
+      "agentId": "host-codex-gpt-5-5-local-ssd",
+      "harness": "Host Codex",
+      "model": "gpt-5.5",
+      "status": "passed",
+      "passed": true,
+      "reward": 1.0,
+      "stepCount": 73,
+      "durationSec": 3265.867,
+      "startedAt": "2026-06-03T13:09:32.848474",
+      "finishedAt": "2026-06-03T14:11:42.021289",
+      "sourceRunRoot": "/Volumes/SSD/terminal-bench-harbor/harbor/runs/tb21-train-fasttext-codex-gpt55-host-20260603T130932",
+      "failureReason": null,
+      "cluster": "closed-loop-valid-artifact",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": true,
+        "char_ngrams": true,
+        "dims": [
+          100
+        ],
+        "wordNgrams": [
+          2,
+          3
+        ],
+        "buckets": [
+          1000000,
+          2000000,
+          3000000,
+          4000000
+        ],
+        "best_p_at_1": 0.629,
+        "max_size_bytes": 592068605,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/local-tb21-train-fasttext-host-codex-gpt55-20260603t130932"
+    },
+    {
+      "runId": "local-tb21-train-fasttext-claude-code-kimi-k25-20260528",
+      "agentId": "claude-code-kimi-k2-5-local-ssd",
+      "harness": "Claude Code",
+      "model": "kimi-k2.5",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 76,
+      "durationSec": 5189.170087,
+      "startedAt": "2026-05-28T04:05:58.823400Z",
+      "finishedAt": "2026-05-28T05:32:27.993487Z",
+      "sourceRunRoot": "/Volumes/SSD/terminal-bench-harbor/harbor/runs/tb21-train-fasttext-claude-code-kimi-k25/train-fasttext__oLPYkcK",
+      "failureReason": "AgentTimeoutError: Agent execution timed out after 3600.0 seconds",
+      "cluster": "accuracy-near-miss",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [
+          50,
+          100,
+          120
+        ],
+        "wordNgrams": [
+          1,
+          2,
+          3
+        ],
+        "buckets": [
+          50000,
+          100000,
+          200000
+        ],
+        "best_p_at_1": 0.606,
+        "max_size_bytes": 1779946332,
+        "under_150mb_mentioned": true
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/local-tb21-train-fasttext-claude-code-kimi-k25-20260528"
+    },
+    {
+      "runId": "local-tb21-train-fasttext-claude-code-kimi-k26-20260528",
+      "agentId": "claude-code-kimi-k2-6-local-ssd",
+      "harness": "Claude Code",
+      "model": "kimi-k2.6",
+      "status": "failed",
+      "passed": false,
+      "reward": 0.0,
+      "stepCount": 90,
+      "durationSec": 1228.87182,
+      "startedAt": "2026-05-28T05:34:02.227371Z",
+      "finishedAt": "2026-05-28T05:54:31.099191Z",
+      "sourceRunRoot": "/Volumes/SSD/terminal-bench-harbor/harbor/runs/tb21-train-fasttext-claude-code-kimi-k26/train-fasttext__BxthwJx",
+      "failureReason": null,
+      "cluster": "compressed-ngram-near-miss",
+      "features": {
+        "mentions_fasttext": true,
+        "converted_parquet": true,
+        "trained_supervised": true,
+        "quantized": true,
+        "autotune": false,
+        "char_ngrams": false,
+        "dims": [
+          50,
+          100
+        ],
+        "wordNgrams": [
+          2
+        ],
+        "buckets": [],
+        "best_p_at_1": 0.625,
+        "max_size_bytes": 1779947655,
+        "under_150mb_mentioned": false
+      },
+      "trajectoryUrl": "/tasks/hi-tb-train-fasttext/runs/local-tb21-train-fasttext-claude-code-kimi-k26-20260528"
+    }
+  ],
+  "blogMarkdownPath": "/blog/train-fasttext-agent-autoresearch-hivemind.md"
+}
