@@ -59,6 +59,14 @@ export interface RunnerRun {
         }>
       }
       trace_exports?: string[]
+      verifier_diagnosis?: {
+        kind?: string
+        severity?: 'infra' | 'agent' | 'warning' | string
+        label?: string
+        summary?: string
+        evidence?: string[]
+        recommendation?: string
+      } | null
       container_artifacts?: {
         container_count?: number
         copy_paths?: string[]

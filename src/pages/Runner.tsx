@@ -36,6 +36,10 @@ function rewardOf(run: RunnerRun) {
   return row?.result_summary?.reward ?? row?.result_summary?.trial_results?.find((item) => item.reward != null)?.reward ?? null
 }
 
+function verifierDiagnosisOf(run: RunnerRun) {
+  return taskRow(run)?.verifier_diagnosis ?? null
+}
+
 export default function Runner() {
   const navigate = useNavigate()
   const { addUpload } = useDatasetStore()
@@ -292,6 +296,7 @@ export default function Runner() {
             ) : (
               runs.map((run) => {
                 const row = taskRow(run)
+                const diagnosis = verifierDiagnosisOf(run)
                 const traceCount = row?.result_summary?.trace_artifact_count ?? row?.result_summary?.trace_artifacts?.length ?? 0
                 const exports = row?.trace_exports?.length ?? 0
                 return (
@@ -309,7 +314,14 @@ export default function Runner() {
                     </div>
                     <div className="truncate font-mono text-xs text-zinc-400">{run.task}</div>
                     <div><Pill className={statusClass(run.status)}>{run.status}</Pill></div>
-                    <div className="font-mono text-zinc-300">{rewardOf(run) ?? '—'}</div>
+                    <div className="space-y-1">
+                      <div className="font-mono text-zinc-300">{rewardOf(run) ?? '—'}</div>
+                      {diagnosis && (
+                        <Pill className={diagnosis.severity === 'infra' ? 'bg-amber-500/15 text-amber-300' : 'bg-ink-800 text-zinc-300'}>
+                          {diagnosis.severity === 'infra' ? 'infra' : diagnosis.label ?? 'diagnosis'}
+                        </Pill>
+                      )}
+                    </div>
                     <div className="text-right text-xs text-zinc-500">{traceCount} traces · {exports} exports</div>
                   </button>
                 )
@@ -361,6 +373,14 @@ export default function Runner() {
               {activeRun.viewerError && (
                 <div className="border-b border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-300">
                   Viewer bundle failed: {activeRun.viewerError}
+                </div>
+              )}
+              {verifierDiagnosisOf(activeRun) && (
+                <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
+                  <div className="font-medium">{verifierDiagnosisOf(activeRun)?.label}: {verifierDiagnosisOf(activeRun)?.summary}</div>
+                  {verifierDiagnosisOf(activeRun)?.evidence?.length ? (
+                    <div className="mt-1 font-mono text-xs text-amber-100/80">{verifierDiagnosisOf(activeRun)?.evidence?.[0]}</div>
+                  ) : null}
                 </div>
               )}
               <div className="grid gap-3 border-b border-ink-800 px-4 py-3 text-xs text-zinc-400 md:grid-cols-3">

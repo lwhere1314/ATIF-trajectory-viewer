@@ -295,14 +295,130 @@ async function stepsFromTraceArtifact(path) {
 }
 
 async function findVerifierLog(jobDir) {
-  const files = await walkFiles(jobDir)
-  const candidate = files.find((rel) => /verifier\/(test-stdout|stdout|reward|.*\.txt)$/i.test(rel))
+  const candidates = [
+    join(jobDir, 'verifier', 'test-stdout.txt'),
+    join(jobDir, 'verifier', 'stdout.txt'),
+  ]
+  const entries = await readdir(jobDir, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    if (entry.name === 'container_artifacts') continue
+    candidates.push(join(jobDir, entry.name, 'verifier', 'test-stdout.txt'))
+    candidates.push(join(jobDir, entry.name, 'verifier', 'stdout.txt'))
+  }
+
+  const artifactsRoot = join(jobDir, 'container_artifacts')
+  const artifactEntries = await readdir(artifactsRoot, { withFileTypes: true }).catch(() => [])
+  for (const entry of artifactEntries) {
+    if (!entry.isDirectory()) continue
+    candidates.push(join(artifactsRoot, entry.name, 'logs', 'verifier', 'test-stdout.txt'))
+    candidates.push(join(artifactsRoot, entry.name, 'logs', 'verifier', 'stdout.txt'))
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === 'container_artifacts') continue
+    candidates.push(join(jobDir, entry.name, 'verifier', 'reward.txt'))
+  }
+  for (const entry of artifactEntries) {
+    if (!entry.isDirectory()) continue
+    candidates.push(join(artifactsRoot, entry.name, 'logs', 'verifier', 'reward.txt'))
+  }
+
+  const candidate = candidates.find((path) => existsSync(path))
   if (!candidate) return null
   try {
-    return scrubText(await readFile(join(jobDir, candidate), 'utf8')).slice(0, 80000)
+    return scrubText(await readFile(candidate, 'utf8')).slice(0, 80000)
   } catch {
     return null
   }
+}
+
+function evidenceLines(log, patterns, limit = 4) {
+  if (!log) return []
+  const lines = String(log).split(/\r?\n/)
+  const matches = []
+  for (const line of lines) {
+    if (patterns.some((pattern) => pattern.test(line))) {
+      matches.push(line.trim())
+      if (matches.length >= limit) break
+    }
+  }
+  return matches
+}
+
+function diagnoseVerifierLog(verifierLog, reward, row = {}) {
+  const log = verifierLog || ''
+  const lowered = log.toLowerCase()
+  if (!log) {
+    if (reward === 0 || reward === 0.0) {
+      return {
+        kind: 'verifier_unknown_zero',
+        severity: 'warning',
+        label: 'Verifier zero without log',
+        summary: 'Reward is 0 but no verifier stdout was captured, so this should be reviewed before treating it as an agent failure.',
+        evidence: [],
+        recommendation: 'Keep the trace, but exclude it from clean preference/RL labels until a verifier log or rerun is available.',
+      }
+    }
+    return null
+  }
+
+  const uvInstallFailed = /astral\.sh|uvx: command not found|\/root\/\.local\/bin\/env: no such file|uv: command not found/i.test(log)
+  const networkFailed = /ssl_error|ssl_connect|connection reset|connection refused|failed to connect|could not resolve|temporary failure|operation timed out|unexpected_eof|eof occurred/i.test(log)
+  const pytestStarted = /(?:^|\n)(?:=+ test session starts|collected \d+ items|FAILED|PASSED|ERRORS?|test_)/i.test(log)
+  const rewardZero = reward === 0 || reward === 0.0 || row?.result_summary?.reward === 0 || row?.result_summary?.reward === 0.0
+
+  if (uvInstallFailed && (networkFailed || !pytestStarted)) {
+    return {
+      kind: 'verifier_setup_network',
+      severity: 'infra',
+      label: 'Verifier infra failure',
+      summary: 'The verifier failed while installing uv before pytest could run, so reward=0 is not a clean model-quality signal.',
+      evidence: evidenceLines(log, [
+        /astral\.sh/i,
+        /SSL_ERROR|SSL_connect|connection reset|connection refused|failed to connect|could not resolve|temporary failure|operation timed out/i,
+        /\/root\/\.local\/bin\/env: no such file/i,
+        /uvx: command not found|uv: command not found/i,
+      ]),
+      recommendation: 'Treat this run as verifier-infra false-kill; rerun verifier with a working HTTPS path, cached uv, or a verifier-safe network profile.',
+    }
+  }
+
+  if (networkFailed && !pytestStarted) {
+    return {
+      kind: 'verifier_setup_network',
+      severity: 'infra',
+      label: 'Verifier infra failure',
+      summary: 'Network/setup failed before pytest started, so the reward is likely an infrastructure artifact.',
+      evidence: evidenceLines(log, [
+        /SSL_ERROR|SSL_connect|connection reset|connection refused|failed to connect|could not resolve|temporary failure|operation timed out|unexpected_eof/i,
+      ]),
+      recommendation: 'Do not use this as a clean negative label; rerun with verifier network fixed.',
+    }
+  }
+
+  if (rewardZero && !pytestStarted && /command not found|no such file or directory|permission denied/i.test(lowered)) {
+    return {
+      kind: 'verifier_setup_error',
+      severity: 'infra',
+      label: 'Verifier setup failure',
+      summary: 'The verifier failed in setup before running the task assertions.',
+      evidence: evidenceLines(log, [/command not found/i, /no such file or directory/i, /permission denied/i]),
+      recommendation: 'Review as infrastructure/setup failure before assigning model blame.',
+    }
+  }
+
+  if (rewardZero && pytestStarted) {
+    return {
+      kind: 'semantic_failure',
+      severity: 'agent',
+      label: 'Verifier semantic failure',
+      summary: 'Pytest appears to have run, so reward=0 is more likely a real task failure.',
+      evidence: evidenceLines(log, [/FAILED/i, /AssertionError/i, /E\s+assert/i, /short test summary/i]),
+      recommendation: 'This can be used as a negative/repair sample after checking the assertion.',
+    }
+  }
+
+  return null
 }
 
 async function materializeViewerRun(run) {
@@ -320,7 +436,32 @@ async function materializeViewerRun(run) {
   const steps = tracePath ? await stepsFromTraceArtifact(tracePath) : []
   const verifierLog = row.job_dir ? await findVerifierLog(row.job_dir) : null
   const reward = row.result_summary?.reward ?? row.result_summary?.trial_results?.find((item) => item.reward != null)?.reward ?? null
+  const verifierDiagnosis = row.verifier_diagnosis || diagnoseVerifierLog(verifierLog, reward, row)
   const status = row.status === 'finished' ? 'completed' : row.status === 'process_error' ? 'error' : 'failed'
+  const failureReason = verifierDiagnosis
+    ? `${verifierDiagnosis.label}: ${verifierDiagnosis.summary}`
+    : row.status === 'finished'
+      ? null
+      : row.status
+  const grade = reward != null || verifierDiagnosis || verifierLog
+    ? {
+        score: reward,
+        maxScore: 1,
+        subscores: [],
+        summary: verifierDiagnosis?.summary || null,
+        findings: verifierDiagnosis ? [{
+          category: verifierDiagnosis.severity === 'infra' ? 'verifier-infra' : 'verifier',
+          severity: verifierDiagnosis.severity === 'infra' ? 'major' : 'minor',
+          summary: verifierDiagnosis.label,
+          detail: verifierDiagnosis.recommendation,
+        }] : [],
+        verifier: verifierDiagnosis ? {
+          checked: 'Verifier setup and task assertions',
+          produced: verifierDiagnosis.summary,
+          quote: verifierDiagnosis.evidence?.join('\n') || null,
+        } : null,
+      }
+    : null
 
   await mkdir(VIEWER_RUNS_DIR, { recursive: true })
   await writeJson(join(VIEWER_RUNS_DIR, `${viewerRunId}.json`), { steps, verifierLog })
@@ -342,6 +483,7 @@ async function materializeViewerRun(run) {
         jobDir: row.job_dir,
         traceExports: row.trace_exports || [],
         containerArtifacts: row.container_artifacts || null,
+        verifierDiagnosis,
       },
     }],
     runs: [{
@@ -359,8 +501,8 @@ async function materializeViewerRun(run) {
       durationSec: row.duration_sec ?? null,
       hasVerifierLog: Boolean(verifierLog),
       artifacts: row.trace_exports || [],
-      grade: null,
-      failureReason: row.status === 'finished' ? null : row.status,
+      grade,
+      failureReason,
     }],
   }
   const bundlePath = join(UI_RUNS_DIR, run.id, 'viewer-bundle.json')
@@ -433,6 +575,10 @@ async function readState(run) {
   for (const row of taskRows) {
     const status = row?.status || 'unknown'
     counts[status] = (counts[status] || 0) + 1
+    const reward = row?.result_summary?.reward ?? row?.result_summary?.trial_results?.find((item) => item.reward != null)?.reward ?? null
+    const verifierLog = row?.job_dir ? await findVerifierLog(row.job_dir) : null
+    const diagnosis = diagnoseVerifierLog(verifierLog, reward, row)
+    if (diagnosis) row.verifier_diagnosis = diagnosis
   }
   return { ...state, counts }
 }
