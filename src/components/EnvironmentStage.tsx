@@ -772,6 +772,7 @@ function WorkspacePanel({ ws, activeStep, task }: { ws: Workspace; activeStep: n
       (f) => f.step === activeStep && (f.op === 'create' || f.op === 'edit' || f.op === 'append'),
     )
     if (changed.length) setTab('file:' + changed[changed.length - 1].path)
+    else if (ws.terminal.some((entry) => entry.step === activeStep)) setTab('terminal')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStep])
 
@@ -811,7 +812,7 @@ function WorkspacePanel({ ws, activeStep, task }: { ws: Workspace; activeStep: n
 
   const fileList = fsView === 'agent' ? agentFiles : humanFiles
   const agentEmptyHint = fsView === 'agent' && hasEnv && agentFiles.length === 0
-    ? `No agent filesystem to show — the Dockerfile copies no files into the container (base image “${env?.baseImage ?? ''}” provides the tree) and this run wrote none.${services.length ? ` The agent worked against services: ${services.join(', ')}.` : ''}`
+    ? `No agent filesystem to show up to this step — the Dockerfile copies no files into the container (base image “${env?.baseImage ?? ''}” provides the tree), and the agent has not written a captured file yet.${services.length ? ` The agent worked against services: ${services.join(', ')}.` : ''}`
     : undefined
   const openFile = tab.startsWith('file:') ? tab.slice(5) : null
   const openFileEntry = openFile ? fileList.find((f) => f.path === openFile) ?? ws.files.find((f) => f.path === openFile) : null

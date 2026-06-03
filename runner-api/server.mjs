@@ -169,6 +169,18 @@ async function prepareTasksDirForRun(task, runRoot) {
   return { tasksDir, mode: 'direct-task-copy' }
 }
 
+function contentToText(content) {
+  if (content == null) return ''
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) return content.map(contentToText).filter(Boolean).join('\n')
+  if (typeof content === 'object') {
+    if (typeof content.text === 'string') return content.text
+    if (typeof content.content === 'string') return content.content
+    return JSON.stringify(content)
+  }
+  return String(content)
+}
+
 function textFromContentBlocks(blocks) {
   if (!Array.isArray(blocks)) return ''
   return blocks.map((block) => {
@@ -181,29 +193,79 @@ function textFromContentBlocks(blocks) {
   }).filter(Boolean).join('\n')
 }
 
+function mutationsForToolCalls(toolCalls) {
+  const mutations = []
+  for (const toolCall of toolCalls || []) {
+    let args = {}
+    try {
+      args = JSON.parse(toolCall.args || '{}')
+    } catch {
+      args = {}
+    }
+    const name = String(toolCall.name || '')
+    const lower = name.toLowerCase()
+    const path = args.file_path || args.filepath || args.path || args.filename
+    if (path && /(write|edit|replace|insert|patch)/i.test(name)) {
+      mutations.push({ kind: 'file', tool: name, target: String(path), summary: lower.includes('write') ? 'file write' : 'file edit' })
+    } else if (lower === 'bash') {
+      const command = String(args.command || args.cmd || '').trim()
+      mutations.push({ kind: 'command', tool: name, summary: command ? command.slice(0, 120) : 'terminal command' })
+    }
+  }
+  return mutations.length ? mutations : null
+}
+
 function stepFromClaudeEvent(event, index) {
   const type = String(event?.type || event?.role || 'agent')
+  if (type === 'system') return null
   const message = event?.message || event
-  const role = type === 'user' ? 'user' : type === 'assistant' ? 'assistant' : type === 'system' ? 'system' : type === 'result' ? 'tool' : 'agent'
+  const blocks = Array.isArray(message?.content) ? message.content : null
+  const toolResultBlocks = blocks ? blocks.filter((block) => block?.type === 'tool_result') : []
+  const role = toolResultBlocks.length
+    ? 'tool'
+    : type === 'user'
+      ? 'user'
+      : type === 'assistant'
+        ? 'assistant'
+        : type === 'result'
+          ? 'assistant'
+          : 'agent'
+
+  const toolCalls = blocks
+    ? blocks
+        .filter((block) => block?.type === 'tool_use')
+        .map((block) => ({ name: block.name || 'tool', args: scrubText(JSON.stringify(block.input ?? {})) }))
+    : null
+  const textBlocks = blocks ? blocks.filter((block) => block?.type === 'text' || typeof block?.text === 'string') : null
+  const reasoningBlocks = blocks ? blocks.filter((block) => block?.type === 'thinking' || typeof block?.thinking === 'string') : null
   let text = ''
-  if (typeof message?.content === 'string') text = message.content
+  let reasoning = ''
+  let observation = ''
+  if (toolResultBlocks.length) {
+    observation = toolResultBlocks.map((block) => contentToText(block.content)).filter(Boolean).join('\n')
+  } else if (textBlocks?.length) {
+    text = textBlocks.map((block) => contentToText(block.text ?? block.content)).filter(Boolean).join('\n')
+  } else if (toolCalls?.length) {
+    text = ''
+  } else if (reasoningBlocks?.length) {
+    text = ''
+  } else if (typeof message?.content === 'string') text = message.content
   else if (Array.isArray(message?.content)) text = textFromContentBlocks(message.content)
   else if (typeof event?.result === 'string') text = event.result
   else if (typeof event?.summary === 'string') text = event.summary
   else text = JSON.stringify(event)
-
-  const toolCalls = Array.isArray(message?.content)
-    ? message.content
-        .filter((block) => block?.type === 'tool_use')
-        .map((block) => ({ name: block.name || 'tool', args: JSON.stringify(block.input ?? {}) }))
-    : null
+  if (reasoningBlocks?.length) {
+    reasoning = reasoningBlocks.map((block) => contentToText(block.thinking ?? block.text ?? block.content)).filter(Boolean).join('\n')
+  }
 
   return {
     index,
     role,
-    text: scrubText(text).slice(0, 40000),
+    text: text ? scrubText(text).slice(0, 40000) : null,
+    reasoning: reasoning ? scrubText(reasoning).slice(0, 12000) : null,
     toolCalls,
-    observation: type === 'result' ? scrubText(text).slice(0, 40000) : null,
+    observation: observation ? scrubText(observation).slice(0, 40000) : null,
+    mutations: mutationsForToolCalls(toolCalls),
   }
 }
 
@@ -218,7 +280,8 @@ async function stepsFromTraceArtifact(path) {
   const steps = []
   for (const line of lines) {
     try {
-      steps.push(stepFromClaudeEvent(JSON.parse(line), steps.length))
+      const step = stepFromClaudeEvent(JSON.parse(line), steps.length)
+      if (step) steps.push(step)
     } catch {
       if (steps.length < 200) {
         steps.push({ index: steps.length, role: 'agent', text: scrubText(line).slice(0, 40000) })
