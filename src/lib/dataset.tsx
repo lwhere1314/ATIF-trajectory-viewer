@@ -20,6 +20,18 @@ interface Store {
 const UP_KEY = 'tv-uploads'
 const DatasetContext = createContext<Store>({ data: null, error: null, addUpload: () => {}, clearUploads: () => {}, uploadedCount: 0 })
 
+function assetUrl(path: string): string {
+  if (/^(https?:)?\/\//.test(path) || path.startsWith('/')) return path
+  return `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
+}
+
+const DATASET_URL = assetUrl(import.meta.env.VITE_DATASET_URL || 'dataset.json')
+const RUNS_BASE_URL = (() => {
+  const configured = import.meta.env.VITE_RUNS_BASE_URL
+  if (configured) return assetUrl(configured).replace(/\/?$/, '/')
+  return DATASET_URL.replace(/[^/]*$/, 'runs/')
+})()
+
 function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
   const map = new Map(base.map((x) => [x.id, x]))
   for (const x of extra) map.set(x.id, x)
@@ -34,7 +46,7 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}dataset.json`)
+    fetch(DATASET_URL, { cache: 'no-store' })
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((d: Dataset) => setBase(d))
       .catch((e) => setError(String(e)))
@@ -93,7 +105,7 @@ export function loadRunPayload(run: Run): Promise<RunPayload> {
   if (cached) return Promise.resolve(cached)
   const inflight = payloadInflight.get(run.id)
   if (inflight) return inflight
-  const p = fetch(`${import.meta.env.BASE_URL}runs/${run.id}.json`)
+  const p = fetch(`${RUNS_BASE_URL}${run.id}.json`, { cache: 'no-store' })
     .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
     .then((j: { steps?: Step[]; verifierLog?: string | null }) => {
       const payload: RunPayload = { steps: j.steps ?? [], verifierLog: j.verifierLog ?? null }

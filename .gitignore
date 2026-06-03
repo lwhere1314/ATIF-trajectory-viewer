@@ -21,6 +21,9 @@ __pycache__/
 #   3. Run: python3 scripts/ingest.py
 data/
 
+# Local generated datasets, e.g. MiniMax-M3 trajectories built from the SSD run.
+public/local/
+
 # --- Local dev tooling (Claude Code workflows, settings, etc.) ---
 .claude/
 

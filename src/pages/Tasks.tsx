@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Sparkles, ScrollText, Award, Table2, Globe, MonitorPlay, FileType2,
-  MessagesSquare, Container, Code2, Layers, Gauge, type LucideIcon,
+  MessagesSquare, Container, Code2, Layers, Gauge, Search, X, type LucideIcon,
 } from 'lucide-react'
 import { PageHeader } from '../components/Layout'
 import { Loading, Pill } from '../components/ui'
 import { FORMAT_LABELS, fmtPct } from '../lib/format'
 import { useDatasetStore, visibleTasks } from '../lib/dataset'
 import { useAuth } from '../lib/auth'
-import type { Run, Task } from '../lib/types'
+import type { Agent, Run, Task, Vendor } from '../lib/types'
 
 const DIFFICULTY: Record<string, string> = {
   easy: 'bg-emerald-500/15 text-emerald-300',
@@ -63,11 +63,64 @@ function taskBadges(task: Task, runs: Run[], aftIds: Set<string>): Badge[] {
   return b
 }
 
+function searchFold(value: string) {
+  return value.toLowerCase().replace(/[_./:-]+/g, ' ')
+}
+
+function metadataText(metadata?: Record<string, unknown>) {
+  if (!metadata) return ''
+  try {
+    return JSON.stringify(metadata)
+  } catch {
+    return Object.values(metadata).map(String).join(' ')
+  }
+}
+
+function taskSearchText(task: Task, runs: Run[], agents: Map<string, Agent>, vendor?: Vendor) {
+  const agentText = runs.flatMap((run) => {
+    const agent = agents.get(run.agentId)
+    return [
+      run.id,
+      run.status,
+      run.failureReason,
+      agent?.harness,
+      agent?.model,
+      agent?.family,
+    ]
+  })
+
+  return [
+    task.id,
+    task.title,
+    task.category,
+    task.difficulty,
+    task.source,
+    FORMAT_LABELS[task.source],
+    vendor?.name,
+    task.instruction,
+    metadataText(task.metadata),
+    ...task.files.map((f) => `${f.path} ${f.kind} ${f.language ?? ''}`),
+    ...agentText,
+  ].filter(Boolean).join(' ')
+}
+
+function taskMatchesSearch(task: Task, query: string, runs: Run[], agents: Map<string, Agent>, vendor?: Vendor) {
+  const tokens = searchFold(query).trim().split(/\s+/).filter(Boolean)
+  if (!tokens.length) return true
+
+  const text = taskSearchText(task, runs, agents, vendor)
+  const raw = text.toLowerCase()
+  const folded = searchFold(text)
+  return tokens.every((token) => raw.includes(token) || folded.includes(token))
+}
+
 export default function Tasks() {
   const { data, error } = useDatasetStore()
   const { isMember } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [aftIds, setAftIds] = useState<Set<string>>(new Set())
+  const query = searchParams.get('q') ?? ''
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}aft/index.json`)
@@ -82,13 +135,28 @@ export default function Tasks() {
     return m
   }, [data])
 
+  const agentsById = useMemo(() => new Map(data?.agents.map((a) => [a.id, a]) ?? []), [data])
+  const vendorsById = useMemo(() => new Map(data?.vendors.map((v) => [v.id, v]) ?? []), [data])
+
   if (error) return <div className="p-8 text-rose-400">Failed to load dataset: {error}</div>
   if (!data) return <Loading />
 
   const tasks = visibleTasks(data, isMember)
+  const trimmedQuery = query.trim()
+  const filteredTasks = trimmedQuery
+    ? tasks.filter((task) => taskMatchesSearch(task, trimmedQuery, runsByTask.get(task.id) ?? [], agentsById, vendorsById.get(task.vendorId)))
+    : tasks
+
+  const updateQuery = (next: string) => {
+    const params = new URLSearchParams(searchParams)
+    if (next.trim()) params.set('q', next)
+    else params.delete('q')
+    setSearchParams(params, { replace: true })
+  }
+
   // group: vendor -> category -> tasks
   const byVendor = new Map<string, Map<string, Task[]>>()
-  for (const t of tasks) {
+  for (const t of filteredTasks) {
     const cat = t.category?.trim() || 'Other'
     if (!byVendor.has(t.vendorId)) byVendor.set(t.vendorId, new Map())
     const cats = byVendor.get(t.vendorId)!
@@ -100,9 +168,40 @@ export default function Tasks() {
     <>
       <PageHeader
         title="Tasks"
-        subtitle={`${tasks.length} tasks · grouped by source · environment/category`}
+        subtitle={trimmedQuery
+          ? `${filteredTasks.length} of ${tasks.length} tasks · grouped by source · environment/category`
+          : `${tasks.length} tasks · grouped by source · environment/category`}
       />
       <div className="space-y-6 p-8">
+        <section className="card p-3">
+          <label className="relative block">
+            <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => updateQuery(event.target.value)}
+              placeholder="Search tasks, ids, models, files..."
+              aria-label="Search tasks"
+              className="h-11 w-full rounded-lg border border-ink-700 bg-ink-950/70 pl-10 pr-11 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-accent/70 focus:ring-2 focus:ring-accent/20"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => updateQuery('')}
+                aria-label="Clear search"
+                title="Clear search"
+                className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-zinc-500 hover:bg-ink-800 hover:text-zinc-200"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+            <span>{trimmedQuery ? `${filteredTasks.length} matches` : `${tasks.length} tasks indexed`}</span>
+            {trimmedQuery && <Pill className="max-w-full truncate bg-accent/15 text-accent">{trimmedQuery}</Pill>}
+          </div>
+        </section>
+
         <details className="text-xs text-zinc-500">
           <summary className="cursor-pointer hover:text-zinc-300">What the task badges mean</summary>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
@@ -114,6 +213,17 @@ export default function Tasks() {
             ))}
           </div>
         </details>
+
+        {filteredTasks.length === 0 && (
+          <section className="card p-8 text-center">
+            <h2 className="text-sm font-medium text-white">No matching tasks</h2>
+            <p className="mt-1 text-sm text-zinc-500">Try a task id, model name, category, or file path.</p>
+            <button type="button" onClick={() => updateQuery('')} className="btn-ghost mt-4">
+              Clear search
+            </button>
+          </section>
+        )}
+
         {data.vendors.map((vendor) => {
           const cats = byVendor.get(vendor.id)
           if (!cats) return null

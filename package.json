@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:minimax-ssd": "npm run ingest:minimax-ssd && vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "ingest:minimax-ssd": "python3 scripts/ingest_minimax_ssd.py",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
