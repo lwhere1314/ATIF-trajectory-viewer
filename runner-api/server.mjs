@@ -2,7 +2,7 @@
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -133,6 +133,40 @@ async function collectTaskFiles(task) {
     files.push({ path: rel, kind: fileKind(rel), language: languageFor(rel), content })
   }
   return files
+}
+
+function shouldUseDirectTaskCopy() {
+  const mode = (process.env.RUNNER_CONTAINER_NETWORK || '').toLowerCase()
+  if (mode === 'direct') return true
+  if (mode === 'proxy') return false
+  const baseUrl = process.env.ANTHROPIC_BASE_URL || process.env.TOKEN_PLAN_BASE_URL || ''
+  return baseUrl.includes('coding.dashscope.aliyuncs.com')
+}
+
+async function prepareTasksDirForRun(task, runRoot) {
+  if (!shouldUseDirectTaskCopy()) {
+    return { tasksDir: TB21_TASKS_DIR, mode: 'proxy-task-source' }
+  }
+
+  const tasksDir = join(runRoot, 'task-copy')
+  const source = join(TB21_TASKS_DIR, task)
+  const destination = join(tasksDir, task)
+  await mkdir(tasksDir, { recursive: true })
+  await cp(source, destination, { recursive: true, force: true })
+
+  const dockerfile = join(destination, 'environment', 'Dockerfile')
+  try {
+    const original = await readFile(dockerfile, 'utf8')
+    const stripped = original
+      .split(/\r?\n/)
+      .filter((line) => !/^ENV\s+(HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|http_proxy|https_proxy|all_proxy)=/i.test(line.trim()))
+      .join('\n')
+    await writeFile(dockerfile, `${stripped.replace(/\n*$/, '')}\n`)
+  } catch {
+    // Some tasks do not have a Dockerfile; Harbor will report the real error.
+  }
+
+  return { tasksDir, mode: 'direct-task-copy' }
 }
 
 function textFromContentBlocks(blocks) {
@@ -448,11 +482,12 @@ async function startRun(body) {
   const apiLogPath = join(runUiDir, 'runner-api.log')
   const runRoot = join(TB21_RUNS_DIR, runName)
   const statePath = join(runRoot, 'state.json')
+  const prepared = await prepareTasksDirForRun(task, runRoot)
 
   const args = [
     TB21_BATCH_SCRIPT,
     '--workdir', TB21_WORKDIR,
-    '--tasks-dir', TB21_TASKS_DIR,
+    '--tasks-dir', prepared.tasksDir,
     '--runs-dir', TB21_RUNS_DIR,
     '--run-name', runName,
     '--model', model,
@@ -491,6 +526,8 @@ async function startRun(body) {
       runRoot,
       statePath,
       apiLogPath,
+      containerNetwork: prepared.mode,
+      tasksDir: prepared.tasksDir,
       commandSummary: `${basename(TB21_PYTHON)} ${basename(TB21_BATCH_SCRIPT)} --run-name ${runName} --model ${model} --task ${task}`,
     })
     await writeJson(join(runUiDir, 'status.json'), run)
