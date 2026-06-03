@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { Play, RefreshCw, Server, Square, Terminal, Search } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Pill } from '../components/ui'
+import { useDatasetStore, type UploadBundle } from '../lib/dataset'
 import {
   getRunnerConfig,
   getRunnerLog,
@@ -35,10 +37,16 @@ function rewardOf(run: RunnerRun) {
 }
 
 export default function Runner() {
+  const navigate = useNavigate()
+  const { addUpload } = useDatasetStore()
   const [config, setConfig] = useState<RunnerConfig | null>(null)
   const [runs, setRuns] = useState<RunnerRun[]>([])
   const [logRun, setLogRun] = useState<string | null>(null)
   const [logText, setLogText] = useState('')
+  const [notice, setNotice] = useState<string | null>(null)
+  const [autoOpenRunId, setAutoOpenRunId] = useState<string | null>(null)
+  const openedRuns = useRef(new Set<string>())
+  const detailRef = useRef<HTMLDivElement | null>(null)
   const [task, setTask] = useState('cancel-async-tasks')
   const [taskQuery, setTaskQuery] = useState('cancel')
   const [taskOptions, setTaskOptions] = useState<string[]>([])
@@ -49,6 +57,12 @@ export default function Runner() {
   const [busy, setBusy] = useState(false)
 
   const activeRun = useMemo(() => runs.find((run) => run.id === logRun) ?? runs[0] ?? null, [logRun, runs])
+  const activeDuplicate = useMemo(() => runs.find((run) => (
+    run.task === task &&
+    run.model === model &&
+    run.agent === 'claude-code' &&
+    ['starting', 'running', 'stopping'].includes(run.status)
+  )), [runs, task, model])
 
   const refresh = async () => {
     try {
@@ -80,16 +94,47 @@ export default function Runner() {
     return () => window.clearInterval(timer)
   }, [activeRun?.id])
 
+  useEffect(() => {
+    if (!activeRun || activeRun.id !== autoOpenRunId || activeRun.status !== 'finished') return
+    if (openedRuns.current.has(activeRun.id)) return
+    openedRuns.current.add(activeRun.id)
+    openViewerForRun(activeRun).catch((err) => setError(err instanceof Error ? err.message : String(err)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun, addUpload, autoOpenRunId, navigate])
+
   const saveToken = (value: string) => {
     setToken(value)
     localStorage.setItem(TOKEN_KEY, value)
   }
 
+  const openViewerForRun = async (run: RunnerRun) => {
+    const bundleUrl = run.viewer?.bundleUrl ?? `/api/runner/runs/${encodeURIComponent(run.id)}/viewer-bundle.json`
+    const bundle = await fetch(bundleUrl).then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json() as Promise<UploadBundle>
+    })
+    addUpload(bundle)
+    const taskId = run.viewer?.taskId ?? bundle.tasks[0]?.id
+    const runId = run.viewer?.runId ?? bundle.runs[0]?.id
+    if (!taskId || !runId) throw new Error('viewer bundle did not include a task/run')
+    navigate(`/tasks/${taskId}/runs/${runId}`)
+  }
+
   const start = async () => {
+    if (activeDuplicate) {
+      setLogRun(activeDuplicate.id)
+      setNotice(`Already running: ${activeDuplicate.id}`)
+      window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+      return
+    }
     setBusy(true)
     try {
       const run = await startRunnerRun({ token, task, model, forceRerun })
+      setRuns((prev) => [run, ...prev.filter((item) => item.id !== run.id)])
       setLogRun(run.id)
+      setAutoOpenRunId(run.id)
+      setNotice(`Started ${run.runName}. This page will auto-open the viewer when the trace is ready.`)
+      window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
       await refresh()
       setError(null)
     } catch (err) {
@@ -197,8 +242,20 @@ export default function Runner() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-ink-950 hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Play size={16} />
-                Start Claude Code run
+                {busy ? 'Starting...' : activeDuplicate ? 'Show active run' : 'Start Claude Code run'}
               </button>
+              {activeDuplicate && (
+                <button
+                  onClick={() => {
+                    setLogRun(activeDuplicate.id)
+                    detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}
+                  className="w-full rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-left text-sm text-sky-200 hover:bg-sky-500/15"
+                >
+                  Active run: <span className="font-mono">{activeDuplicate.id}</span>
+                </button>
+              )}
+              {notice && <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{notice}</div>}
               {error && <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</div>}
             </div>
           </div>
@@ -261,23 +318,51 @@ export default function Runner() {
           </div>
 
           {activeRun && (
-            <div className="card overflow-hidden">
+            <div ref={detailRef} className="card overflow-hidden">
               <div className="flex items-center justify-between border-b border-ink-700 px-4 py-3">
                 <div className="min-w-0">
                   <div className="truncate font-mono text-sm text-zinc-100">{activeRun.id}</div>
                   <div className="mt-1 text-xs text-zinc-500">{activeRun.runRoot}</div>
                 </div>
-                {activeRun.status === 'running' && (
-                  <button
-                    onClick={() => stop(activeRun)}
-                    disabled={busy}
-                    className="inline-flex items-center gap-2 rounded-md border border-rose-500/40 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
-                  >
-                    <Square size={14} />
-                    Stop
-                  </button>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  {activeRun.viewer && (
+                    <button
+                      onClick={() => openViewerForRun(activeRun).catch((err) => setError(err instanceof Error ? err.message : String(err)))}
+                      className="inline-flex items-center gap-2 rounded-md border border-accent/40 px-3 py-2 text-sm text-accent hover:bg-accent/10"
+                    >
+                      Open in viewer
+                    </button>
+                  )}
+                  {!activeRun.viewer && activeRun.status === 'finished' && (
+                    <button
+                      onClick={() => openViewerForRun(activeRun).catch((err) => setError(err instanceof Error ? err.message : String(err)))}
+                      className="inline-flex items-center gap-2 rounded-md border border-accent/40 px-3 py-2 text-sm text-accent hover:bg-accent/10"
+                    >
+                      Prepare viewer
+                    </button>
+                  )}
+                  {activeRun.status === 'running' && (
+                    <button
+                      onClick={() => stop(activeRun)}
+                      disabled={busy}
+                      className="inline-flex items-center gap-2 rounded-md border border-rose-500/40 px-3 py-2 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                    >
+                      <Square size={14} />
+                      Stop
+                    </button>
+                  )}
+                </div>
               </div>
+              {activeRun.id === autoOpenRunId && activeRun.status === 'running' && (
+                <div className="border-b border-sky-500/20 bg-sky-500/10 px-4 py-2 text-sm text-sky-200">
+                  Running now. This will open the trajectory viewer automatically once the trace bundle is ready.
+                </div>
+              )}
+              {activeRun.viewerError && (
+                <div className="border-b border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-300">
+                  Viewer bundle failed: {activeRun.viewerError}
+                </div>
+              )}
               <div className="grid gap-3 border-b border-ink-800 px-4 py-3 text-xs text-zinc-400 md:grid-cols-3">
                 <PathRow label="State" value={activeRun.statePath ?? '—'} />
                 <PathRow label="API log" value={activeRun.apiLogPath ?? '—'} />

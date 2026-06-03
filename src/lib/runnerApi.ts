@@ -33,6 +33,14 @@ export interface RunnerRun {
   isProcessAttached?: boolean
   logUrl?: string
   publicStatusUrl?: string
+  viewer?: {
+    taskId: string
+    runId: string
+    url: string
+    bundleUrl: string
+    steps: number
+  }
+  viewerError?: string
   state?: {
     counts?: Record<string, number>
     tasks?: Record<string, {

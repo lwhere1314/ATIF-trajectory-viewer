@@ -26,6 +26,7 @@ data/
 
 # Runner API live state and logs.
 public/runner/
+public/runs/runner-*.json
 
 # --- Local dev tooling (Claude Code workflows, settings, etc.) ---
 .claude/

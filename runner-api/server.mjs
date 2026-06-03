@@ -16,6 +16,7 @@ const PUBLIC_ROOT = resolve(env.RUNNER_PUBLIC_ROOT || join(REPO_ROOT, 'public'))
 const REGISTRY_DIR = join(PUBLIC_ROOT, 'runner')
 const REGISTRY_PATH = join(REGISTRY_DIR, 'registry.json')
 const UI_RUNS_DIR = join(REGISTRY_DIR, 'runs')
+const VIEWER_RUNS_DIR = join(PUBLIC_ROOT, 'runs')
 
 const TB21_WORKDIR = env.TB21_WORKDIR || '/Users/hugo/Desktop/super-refactor'
 const TB21_TASKS_DIR = env.TB21_TASKS_DIR || join(TB21_WORKDIR, 'harbor/datasets/terminal-bench-2.1-proxy/tasks')
@@ -28,6 +29,7 @@ const CLAUDE_CODE_BINARY = env.HARBOR_CLAUDE_CODE_BINARY || join(TB21_WORKDIR, '
 
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/
 const running = new Map()
+const launchLocks = new Set()
 
 function nowIso() {
   return new Date().toISOString()
@@ -58,6 +60,221 @@ function scrubText(text) {
     .replace(/(sk-[A-Za-z0-9_-]{12,})/g, 'REDACTED')
     .replace(/((?:TOKEN_PLAN|ANTHROPIC|OPENAI|MINIMAX|GITHUB|GH)_[A-Z0-9_]*(?:KEY|TOKEN|SECRET)[A-Z0-9_]*=)[^\s]+/gi, '$1REDACTED')
     .replace(/(Authorization:\s*Bearer\s+)[^\s]+/gi, '$1REDACTED')
+}
+
+function fileKind(path) {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown'
+  if (lower.endsWith('.json')) return 'json'
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html'
+  if (lower.endsWith('.diff') || lower.endsWith('.patch')) return 'diff'
+  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.svg') || lower.endsWith('.webp')) return 'image'
+  if (lower.endsWith('.csv') || lower.endsWith('.tsv') || lower.endsWith('.xlsx')) return 'spreadsheet'
+  if (/\.(py|js|ts|tsx|jsx|sh|rb|go|rs|java|sql|c|cpp|h)$/.test(lower) || basename(lower) === 'dockerfile') return 'code'
+  return 'text'
+}
+
+function languageFor(path) {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.py')) return 'python'
+  if (lower.endsWith('.js')) return 'javascript'
+  if (lower.endsWith('.ts')) return 'typescript'
+  if (lower.endsWith('.tsx')) return 'tsx'
+  if (lower.endsWith('.sh')) return 'bash'
+  if (lower.endsWith('.json')) return 'json'
+  if (lower.endsWith('.toml')) return 'toml'
+  if (lower.endsWith('.yaml') || lower.endsWith('.yml')) return 'yaml'
+  if (lower.endsWith('.sql')) return 'sql'
+  return undefined
+}
+
+async function walkFiles(root, base = root, out = []) {
+  let entries = []
+  try {
+    entries = await readdir(root, { withFileTypes: true })
+  } catch {
+    return out
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.git')) continue
+    const path = join(root, entry.name)
+    if (entry.isDirectory()) {
+      await walkFiles(path, base, out)
+    } else if (entry.isFile()) {
+      out.push(path.slice(base.length + 1))
+    }
+  }
+  return out
+}
+
+async function collectTaskFiles(task) {
+  const root = join(TB21_TASKS_DIR, task)
+  const paths = (await walkFiles(root)).sort()
+  const files = []
+  for (const rel of paths) {
+    const abs = join(root, rel)
+    let info
+    try {
+      info = await stat(abs)
+    } catch {
+      continue
+    }
+    if (info.size > 200_000) {
+      files.push({ path: rel, kind: fileKind(rel), note: `Omitted: ${info.size} bytes` })
+      continue
+    }
+    let content = ''
+    try {
+      content = await readFile(abs, 'utf8')
+    } catch {
+      files.push({ path: rel, kind: fileKind(rel), note: 'Binary or unreadable file' })
+      continue
+    }
+    files.push({ path: rel, kind: fileKind(rel), language: languageFor(rel), content })
+  }
+  return files
+}
+
+function textFromContentBlocks(blocks) {
+  if (!Array.isArray(blocks)) return ''
+  return blocks.map((block) => {
+    if (!block || typeof block !== 'object') return String(block ?? '')
+    if (typeof block.text === 'string') return block.text
+    if (typeof block.content === 'string') return block.content
+    if (block.type === 'tool_use') return `[tool_use ${block.name || 'tool'}] ${JSON.stringify(block.input ?? {})}`
+    if (block.type === 'tool_result') return `[tool_result] ${typeof block.content === 'string' ? block.content : JSON.stringify(block.content ?? '')}`
+    return JSON.stringify(block)
+  }).filter(Boolean).join('\n')
+}
+
+function stepFromClaudeEvent(event, index) {
+  const type = String(event?.type || event?.role || 'agent')
+  const message = event?.message || event
+  const role = type === 'user' ? 'user' : type === 'assistant' ? 'assistant' : type === 'system' ? 'system' : type === 'result' ? 'tool' : 'agent'
+  let text = ''
+  if (typeof message?.content === 'string') text = message.content
+  else if (Array.isArray(message?.content)) text = textFromContentBlocks(message.content)
+  else if (typeof event?.result === 'string') text = event.result
+  else if (typeof event?.summary === 'string') text = event.summary
+  else text = JSON.stringify(event)
+
+  const toolCalls = Array.isArray(message?.content)
+    ? message.content
+        .filter((block) => block?.type === 'tool_use')
+        .map((block) => ({ name: block.name || 'tool', args: JSON.stringify(block.input ?? {}) }))
+    : null
+
+  return {
+    index,
+    role,
+    text: scrubText(text).slice(0, 40000),
+    toolCalls,
+    observation: type === 'result' ? scrubText(text).slice(0, 40000) : null,
+  }
+}
+
+async function stepsFromTraceArtifact(path) {
+  let content = ''
+  try {
+    content = await readFile(path, 'utf8')
+  } catch {
+    return []
+  }
+  const lines = content.split(/\r?\n/).filter((line) => line.trim())
+  const steps = []
+  for (const line of lines) {
+    try {
+      steps.push(stepFromClaudeEvent(JSON.parse(line), steps.length))
+    } catch {
+      if (steps.length < 200) {
+        steps.push({ index: steps.length, role: 'agent', text: scrubText(line).slice(0, 40000) })
+      }
+    }
+  }
+  if (!steps.length && content.trim()) {
+    steps.push({ index: 0, role: 'agent', text: scrubText(content).slice(0, 40000) })
+  }
+  return steps
+}
+
+async function findVerifierLog(jobDir) {
+  const files = await walkFiles(jobDir)
+  const candidate = files.find((rel) => /verifier\/(test-stdout|stdout|reward|.*\.txt)$/i.test(rel))
+  if (!candidate) return null
+  try {
+    return scrubText(await readFile(join(jobDir, candidate), 'utf8')).slice(0, 80000)
+  } catch {
+    return null
+  }
+}
+
+async function materializeViewerRun(run) {
+  const enriched = await enrichRun(run)
+  const row = enriched.state?.tasks?.[run.task]
+  if (!row) return null
+  const viewerTaskId = `runner-${safeId(run.task)}`
+  const viewerRunId = `runner-${safeId(run.id)}`
+  const agentId = `runner-${safeId(run.agent)}-${safeId(run.model)}`
+  const vendorId = 'runner-api'
+  const traceArtifacts = row.result_summary?.trace_artifacts || []
+  const tracePath = traceArtifacts.find((path) => /claude-code\.txt$/.test(path))
+    || traceArtifacts.find((path) => /\.jsonl$/.test(path))
+    || traceArtifacts[0]
+  const steps = tracePath ? await stepsFromTraceArtifact(tracePath) : []
+  const verifierLog = row.job_dir ? await findVerifierLog(row.job_dir) : null
+  const reward = row.result_summary?.reward ?? row.result_summary?.trial_results?.find((item) => item.reward != null)?.reward ?? null
+  const status = row.status === 'finished' ? 'completed' : row.status === 'process_error' ? 'error' : 'failed'
+
+  await mkdir(VIEWER_RUNS_DIR, { recursive: true })
+  await writeJson(join(VIEWER_RUNS_DIR, `${viewerRunId}.json`), { steps, verifierLog })
+
+  const bundle = {
+    vendors: [{ id: vendorId, name: 'Runner API', coverage: 'Live Harbor / Terminal-Bench runs launched from the local runner API.' }],
+    agents: [{ id: agentId, harness: 'Claude Code', model: run.model, family: run.model.includes('kimi') ? 'Moonshot' : 'unknown', vendorId }],
+    tasks: [{
+      id: viewerTaskId,
+      vendorId,
+      title: run.task,
+      source: 'harbor',
+      category: 'Terminal-Bench 2.1 live runner',
+      difficulty: '',
+      files: await collectTaskFiles(run.task),
+      metadata: {
+        runnerRunId: run.id,
+        runRoot: run.runRoot,
+        jobDir: row.job_dir,
+        traceExports: row.trace_exports || [],
+        containerArtifacts: row.container_artifacts || null,
+      },
+    }],
+    runs: [{
+      id: viewerRunId,
+      taskId: viewerTaskId,
+      agentId,
+      vendorId,
+      format: 'harbor',
+      status,
+      passed: reward === 1 || reward === 1.0,
+      reward,
+      steps: [],
+      stepCount: steps.length,
+      turns: steps.filter((step) => step.role === 'assistant' || step.role === 'agent').length,
+      durationSec: row.duration_sec ?? null,
+      hasVerifierLog: Boolean(verifierLog),
+      artifacts: row.trace_exports || [],
+      grade: null,
+      failureReason: row.status === 'finished' ? null : row.status,
+    }],
+  }
+  const bundlePath = join(UI_RUNS_DIR, run.id, 'viewer-bundle.json')
+  await writeJson(bundlePath, bundle)
+  return {
+    taskId: viewerTaskId,
+    runId: viewerRunId,
+    url: `/tasks/${viewerTaskId}/runs/${viewerRunId}`,
+    bundleUrl: `/runner/runs/${encodeURIComponent(run.id)}/viewer-bundle.json`,
+    steps: steps.length,
+  }
 }
 
 async function readJson(path, fallback) {
@@ -208,10 +425,23 @@ async function startRun(body) {
   if (agent !== 'claude-code') throw httpError(400, 'only claude-code is supported')
   if (!(await taskExists(task))) throw httpError(404, `task not found under ${TB21_TASKS_DIR}: ${task}`)
 
+  const launchKey = `${benchmark}:${agent}:${model}:${task}`
+  const registryData = await registry()
+  const activeDuplicate = registryData.runs.find((run) => (
+    run.benchmark === benchmark &&
+    run.agent === agent &&
+    run.model === model &&
+    run.task === task &&
+    ['starting', 'running', 'stopping'].includes(run.status)
+  ))
+  if (activeDuplicate || launchLocks.has(launchKey)) {
+    throw httpError(409, `run already active for ${task} / ${model}: ${activeDuplicate?.id || 'starting'}`)
+  }
+  launchLocks.add(launchKey)
+
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').toLowerCase()
   const runName = safeId(body.runName || `tb21-${task}-claude-code-${model}-${stamp}`)
   const id = runName
-  if (running.has(id)) throw httpError(409, `run already attached: ${id}`)
 
   const runUiDir = join(UI_RUNS_DIR, id)
   await mkdir(runUiDir, { recursive: true })
@@ -248,44 +478,56 @@ async function startRun(body) {
     `exec ${shellQuote(TB21_PYTHON)} ${args.map(shellQuote).join(' ')}`,
   ].join('\n')
 
-  const run = await upsertRun({
-    id,
-    benchmark,
-    task,
-    agent,
-    model,
-    runName,
-    status: 'starting',
-    startedAt: nowIso(),
-    runRoot,
-    statePath,
-    apiLogPath,
-    commandSummary: `${basename(TB21_PYTHON)} ${basename(TB21_BATCH_SCRIPT)} --run-name ${runName} --model ${model} --task ${task}`,
-  })
-  await writeJson(join(runUiDir, 'status.json'), run)
+  try {
+    const run = await upsertRun({
+      id,
+      benchmark,
+      task,
+      agent,
+      model,
+      runName,
+      status: 'starting',
+      startedAt: nowIso(),
+      runRoot,
+      statePath,
+      apiLogPath,
+      commandSummary: `${basename(TB21_PYTHON)} ${basename(TB21_BATCH_SCRIPT)} --run-name ${runName} --model ${model} --task ${task}`,
+    })
+    await writeJson(join(runUiDir, 'status.json'), run)
 
-  const logStream = createWriteStream(apiLogPath, { flags: 'a' })
-  logStream.write(`[${nowIso()}] starting ${run.commandSummary}\n`)
-  const child = spawn('bash', ['-lc', shell], {
-    cwd: TB21_WORKDIR,
-    env: { ...process.env },
-    detached: true,
-  })
-  running.set(id, child)
-  await upsertRun({ id, status: 'running', pid: child.pid })
+    const logStream = createWriteStream(apiLogPath, { flags: 'a' })
+    logStream.write(`[${nowIso()}] starting ${run.commandSummary}\n`)
+    const child = spawn('bash', ['-lc', shell], {
+      cwd: TB21_WORKDIR,
+      env: { ...process.env },
+      detached: true,
+    })
+    running.set(id, child)
+    await upsertRun({ id, status: 'running', pid: child.pid })
 
-  child.stdout.on('data', (chunk) => logStream.write(scrubText(chunk.toString())))
-  child.stderr.on('data', (chunk) => logStream.write(scrubText(chunk.toString())))
-  child.on('exit', async (code, signal) => {
-    running.delete(id)
-    const nextStatus = code === 0 ? 'finished' : 'error'
-    logStream.write(`[${nowIso()}] exited code=${code} signal=${signal || ''}\n`)
-    logStream.end()
-    const finalRun = await upsertRun({ id, status: nextStatus, returncode: code, signal, finishedAt: nowIso() })
-    await writeJson(join(runUiDir, 'status.json'), await enrichRun(finalRun))
-  })
+    child.stdout.on('data', (chunk) => logStream.write(scrubText(chunk.toString())))
+    child.stderr.on('data', (chunk) => logStream.write(scrubText(chunk.toString())))
+    child.on('exit', async (code, signal) => {
+      running.delete(id)
+      const nextStatus = code === 0 ? 'finished' : 'error'
+      logStream.write(`[${nowIso()}] exited code=${code} signal=${signal || ''}\n`)
+      logStream.end()
+      const finalRun = await upsertRun({ id, status: nextStatus, returncode: code, signal, finishedAt: nowIso() })
+      try {
+        const viewer = await materializeViewerRun(finalRun)
+        if (viewer) {
+          await upsertRun({ id, viewer })
+        }
+      } catch (err) {
+        await upsertRun({ id, viewerError: err instanceof Error ? err.message : String(err) })
+      }
+      await writeJson(join(runUiDir, 'status.json'), await enrichRun(finalRun))
+    })
 
-  return enrichRun(await upsertRun({ id, status: 'running', pid: child.pid }))
+    return enrichRun(await upsertRun({ id, status: 'running', pid: child.pid }))
+  } finally {
+    launchLocks.delete(launchKey)
+  }
 }
 
 async function stopRun(id) {
@@ -344,6 +586,16 @@ async function route(req, res) {
       const jobLog = rows.map((row) => row?.job_dir && join(row.job_dir, 'runner.log')).filter(Boolean).at(-1)
       const text = [await readTail(run.apiLogPath), jobLog ? await readTail(jobLog) : ''].filter(Boolean).join('\n\n--- job runner.log ---\n')
       return sendText(res, 200, text || 'No log yet.\n')
+    }
+    if (req.method === 'GET' && action === 'viewer-bundle.json') {
+      let bundle = await readJson(join(UI_RUNS_DIR, id, 'viewer-bundle.json'), null)
+      if (!bundle) {
+        const viewer = await materializeViewerRun(run)
+        if (viewer) await upsertRun({ id, viewer })
+        bundle = await readJson(join(UI_RUNS_DIR, id, 'viewer-bundle.json'), null)
+      }
+      if (!bundle) throw httpError(404, `viewer bundle is not ready for ${id}`)
+      return sendJson(res, 200, bundle)
     }
     if (req.method === 'POST' && action === 'stop') {
       requireToken(req)
