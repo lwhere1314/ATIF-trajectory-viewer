@@ -66,6 +66,28 @@ Drop a Harbor task zip on `/upload`; it parses in-browser and never leaves your 
    npm install
    npm run dev          # http://localhost:5173
    ```
+3. **Self-hosted server:**
+   ```bash
+   docker compose up -d --build
+   curl http://localhost:8080/healthz
+   ```
+
+   Set `ATIF_VIEWER_PORT=30080` (or any free host port) before `docker compose`
+   if you do not want to expose port `8080` directly. The container serves the
+   built static app with an Nginx SPA fallback, so deep links such as
+   `/tasks/<taskId>/runs/<runId>` work after refresh.
+
+### Deployment notes
+
+- `.vercel/` is intentionally ignored so local Vercel project links stay on
+  each developer's machine and are not committed into the repository.
+- `vercel.json` currently disables Vercel Git auto-deployments and silences
+  Vercel GitHub comments. This prevents commits in this fork from being routed
+  to an inherited or third-party Vercel Team project.
+- If you later connect this repository to your own Vercel project and want
+  Vercel preview/production deployments from GitHub, remove the `git` and
+  `github` blocks from `vercel.json`, or set `git.deploymentEnabled` back to
+  `true`.
 
 ## Citation
 

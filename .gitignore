@@ -5,6 +5,9 @@ dist/
 *.local
 *.tsbuildinfo
 
+# --- Local deployment links ---
+.vercel/
+
 # --- Python ingest tooling ---
 __pycache__/
 *.pyc
@@ -20,6 +23,9 @@ __pycache__/
 #          --local-dir data/hf-cache --include 'data/*.parquet'
 #   3. Run: python3 scripts/ingest.py
 data/
+
+# Runner API live state and logs.
+public/runner/
 
 # --- Local dev tooling (Claude Code workflows, settings, etc.) ---
 .claude/

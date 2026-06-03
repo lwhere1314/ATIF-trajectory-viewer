@@ -1,0 +1,9 @@
+services:
+  atif-viewer:
+    build: .
+    image: atif-trajectory-viewer:latest
+    ports:
+      - "${ATIF_VIEWER_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

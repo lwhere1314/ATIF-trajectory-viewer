@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Rocket, FolderTree, Upload as UploadIcon, Sparkles,
-  PanelLeftClose, PanelLeftOpen, Compass, BarChart3, type LucideIcon,
+  PanelLeftClose, PanelLeftOpen, Compass, BarChart3, ServerCog, type LucideIcon,
 } from 'lucide-react'
 import { useDataset } from '../lib/dataset'
 import { startTour, buildTourSteps } from '../lib/tour'
@@ -13,6 +13,7 @@ const nav: { to: string; label: string; Icon: LucideIcon; end?: boolean }[] = [
   { to: '/showcase', label: 'Feature showcase', Icon: Sparkles },
   { to: '/tasks', label: 'Tasks', Icon: FolderTree },
   { to: '/insights', label: 'AFT insights', Icon: BarChart3 },
+  { to: '/runner', label: 'Runner', Icon: ServerCog },
   { to: '/upload', label: 'Upload', Icon: UploadIcon },
 ]
 // The /overview leaderboard page is still URL-reachable but intentionally

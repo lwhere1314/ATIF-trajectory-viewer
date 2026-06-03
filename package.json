@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "runner:api": "node runner-api/server.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
