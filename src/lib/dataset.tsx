@@ -20,6 +20,16 @@ interface Store {
 const UP_KEY = 'tv-uploads'
 const DatasetContext = createContext<Store>({ data: null, error: null, addUpload: () => {}, clearUploads: () => {}, uploadedCount: 0 })
 
+interface LocalBundleIndexItem {
+  id?: string
+  bundleUrl: string
+}
+
+function publicAssetUrl(url: string): string {
+  if (/^https?:\/\//i.test(url) || url.startsWith('/')) return url
+  return `${import.meta.env.BASE_URL}${url.replace(/^\.?\//, '')}`
+}
+
 function runnerRunIds(bundle: UploadBundle): string[] {
   const ids = new Set<string>()
   for (const task of bundle.tasks) {
@@ -52,6 +62,29 @@ async function fetchRunnerBundle(runId: string): Promise<UploadBundle | null> {
   return null
 }
 
+async function fetchLocalBundles(): Promise<UploadBundle[]> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}runner/local-bundles.json`, { cache: 'no-store' })
+    if (!res.ok) return []
+    const index = await res.json() as LocalBundleIndexItem[]
+    if (!Array.isArray(index)) return []
+    const bundles = await Promise.all(index
+      .filter((item) => typeof item?.bundleUrl === 'string' && item.bundleUrl.length > 0)
+      .map(async (item) => {
+        try {
+          const bundleRes = await fetch(publicAssetUrl(item.bundleUrl), { cache: 'no-store' })
+          if (!bundleRes.ok) return null
+          return await bundleRes.json() as UploadBundle
+        } catch {
+          return null
+        }
+      }))
+    return bundles.filter((bundle): bundle is UploadBundle => bundle != null)
+  } catch {
+    return []
+  }
+}
+
 function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
   const map = new Map(base.map((x) => [x.id, x]))
   for (const x of extra) map.set(x.id, x)
@@ -61,6 +94,7 @@ function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
 export function DatasetProvider({ children }: { children: ReactNode }) {
   const [base, setBase] = useState<Dataset | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [localBundles, setLocalBundles] = useState<UploadBundle[]>([])
   const [uploads, setUploads] = useState<UploadBundle[]>(() => {
     try { return JSON.parse(localStorage.getItem(UP_KEY) ?? '[]') } catch { return [] }
   })
@@ -70,6 +104,14 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((d: Dataset) => setBase(d))
       .catch((e) => setError(String(e)))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchLocalBundles()
+      .then((bundles) => { if (!cancelled) setLocalBundles(bundles) })
+      .catch(() => {})
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
@@ -100,7 +142,7 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
   }, [uploads])
 
   const data: Dataset | null = base
-    ? [TOUR_BUNDLE, ...uploads].reduce<Dataset>((acc, u) => ({
+    ? [TOUR_BUNDLE, ...localBundles, ...uploads].reduce<Dataset>((acc, u) => ({
         ...acc,
         vendors: mergeById(acc.vendors, u.vendors),
         agents: mergeById(acc.agents, u.agents),
